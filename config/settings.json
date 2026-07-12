@@ -1,0 +1,40 @@
+{
+    "project_name": "Rental Intelligence Agent",
+    "version": "0.1.0",
+
+    "search": {
+        "country": "Spain",
+        "city": "Valencia",
+        "radius_km": 10,
+        "currency": "EUR",
+        "max_price": 1200,
+        "property_types": [
+            "room",
+            "studio",
+            "apartment"
+        ],
+        "websites": [
+            "idealista",
+            "fotocasa",
+            "badi",
+            "spotahome"
+        ]
+    },
+
+    "destination": {
+        "address": "Carrer Mestre Serrano, 3, 46120 Alboraia, Valencia, Spain",
+        "maximum_walk_minutes": 20
+    },
+
+    "preferences": {
+        "air_conditioning": true,
+        "parking": false,
+        "balcony": true,
+        "pets_allowed": false
+    },
+
+    "reports": {
+        "generate_html": true,
+        "generate_pdf": true
+    }
+}

@@ -10,19 +10,19 @@ Storage comes first, before any pipeline logic, because every other module eithe
 
 Repo scaffolded, working agreement established, documentation structure in place (this doc set), Python environment + Playwright/Chromium installed, rental type and `data/` layout decided.
 
-## Phase 1 — Storage Foundation
+## Phase 1 — Storage Foundation (done, 2026-07-14)
 
 - `storage/schema.sql` implementing every table in [03_Data_Model.md](03_Data_Model.md)
-- `storage/database.py` connection management
+- `storage/database.py` connection management, `storage/models.py` dataclasses
 - `storage/apartment_repository.py`, `search_repository.py`, `knowledge_repository.py`
-- Execute the legacy-folder reconciliation in [02_Folder_Guide.md](02_Folder_Guide.md) (move `browser_manager.py` → `collectors/`, `config_loader.py` → `core/config.py`, `apartment.py` → `storage/`, delete the empty superseded folders)
-- Exit criteria: can insert/read a hand-crafted `Apartment` row and its history, round-trip, from a test — no connector needed yet
+- Executed the legacy-folder reconciliation in [02_Folder_Guide.md](02_Folder_Guide.md) — with one change from the original plan: `apartment.py`/`config_loader.py` were **deleted, not migrated**, once confirmed stale (they modeled a different, narrower concept); `storage/models.py` and `core/config.py` were written fresh against the confirmed schema instead. `browser_manager.py` did move into `collectors/browser_collector.py` as planned.
+- Also fixed along the way: `requirements.txt` was empty despite the venv having real dependencies installed — frozen from the actual environment.
+- Exit criteria met: `tests/storage/test_apartment_repository.py` proves a hand-crafted `Apartment` round-trips through insert/read, and that re-observing it with a changed price adds a new history row without losing the original (Principles 1 & 3, in running code).
 
-## Phase 2 — Platform Registry + Discovery Agent
+## Phase 2 — Platform Registry + Discovery Agent (done, 2026-07-14)
 
 - `discovery/platform_registry.py`, `discovery/discovery_agent.py`
-- One seed platform row (even before its connector exists) so later phases have something to reference
-- Exit criteria: `DiscoveryAgent.discover(request)` returns that seed platform
+- Exit criteria met: `tests/discovery/test_discovery_agent.py` proves `DiscoveryAgent.discover(request)` returns a registered active platform and excludes inactive ones. **Note:** this is proven with a test-registered platform, not a real seed row in `data/rental_intelligence.db` — the actual first platform is still an open question (see [../notes/Questions.md](../notes/Questions.md)), so nothing fictional was seeded into the real database.
 
 ## Phase 3 — Collectors
 

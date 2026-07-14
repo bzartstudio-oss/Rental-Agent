@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head><title>Demo Rentals Two — Fixture Listings Page (table layout)</title></head>
+<body>
+  <h1>Demo Rentals Two</h1>
+  <!-- Deliberately a different markup shape (table/tr/td, different class names, a
+       data-id attribute instead of data-listing-id) than demo_platform's fixture, to
+       prove the Connector abstraction genuinely isolates platform-specific parsing —
+       see docs/06_Connector_Framework.md and Roadmap Phase 7. -->
+  <table id="listings">
+    <tr class="row" data-id="alt-001">
+      <td class="name">Modern 1BR Loft</td>
+      <td class="rent">1100</td>
+      <td class="beds">1</td>
+      <td class="baths">1</td>
+      <td class="area">600</td>
+      <td class="loc">88 Second Avenue, Example City</td>
+      <td><a class="link" href="https://example.com/demo-platform-two/listings/alt-001">Details</a></td>
+      <td><img class="pic" src="images/alt-001.png"></td>
+    </tr>
+    <tr class="row" data-id="alt-002">
+      <td class="name">Renovated 4BR House</td>
+      <td class="rent">2600</td>
+      <td class="beds">4</td>
+      <td class="baths">3</td>
+      <td class="area">1800</td>
+      <td class="loc">14 Third Street, Example City</td>
+      <td><a class="link" href="https://example.com/demo-platform-two/listings/alt-002">Details</a></td>
+      <td><img class="pic" src="images/alt-002.png"></td>
+    </tr>
+    <tr class="row" data-id="alt-003">
+      <td class="name">Compact 1BR Near Transit</td>
+      <td class="rent">1050</td>
+      <td class="beds">1</td>
+      <td class="baths">1</td>
+      <td class="area">550</td>
+      <td class="loc">201 Fourth Road, Example City</td>
+      <td><a class="link" href="https://example.com/demo-platform-two/listings/alt-003">Details</a></td>
+      <td><img class="pic" src="images/alt-003.png"></td>
+    </tr>
+  </table>
+</body>
+</html>

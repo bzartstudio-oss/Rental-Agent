@@ -4,3 +4,10 @@ __pycache__/
 *.pyc
 output/*
 !output/.gitkeep
+data/rental_intelligence.db
+data/media/*
+!data/media/.gitkeep
+data/raw_pages/*
+!data/raw_pages/.gitkeep
+data/cache/*
+!data/cache/.gitkeep

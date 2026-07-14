@@ -1,6 +1,6 @@
 # 02 — Folder Guide
 
-Status: V1.0 package structure confirmed (2026-07-14), including resolution of the legacy-folder reconciliation that had been deliberately deferred since 2026-07-13 (see [../learning/architecture_notes.md](../learning/architecture_notes.md)).
+Status: V1.0 package structure **built and tested, not just planned** (2026-07-14) — every file below exists and is exercised by the test suite (56 tests, see [10_Roadmap.md](10_Roadmap.md)), including resolution of the legacy-folder reconciliation that had been deliberately deferred since 2026-07-13 (see [../learning/architecture_notes.md](../learning/architecture_notes.md)).
 
 ## Top-level folders
 
@@ -46,9 +46,13 @@ src/
     platform_registry.py         # reads/writes the `platforms` table
   connectors/
     __init__.py
-    base.py                      # Connector contract (abstract base / protocol)
-    README.md                     # already exists — orientation + link to 06_Connector_Framework.md
-    # one file per platform, e.g. example_platform.py — none yet
+    base.py                      # Connector contract (RawListing, Connector ABC)
+    README.md                     # orientation + link to 06_Connector_Framework.md
+    demo_platform.py               # reference/demo connector — not a real platform, see 10_Roadmap.md
+    demo_platform_two.py            # second reference connector, different fixture shape (Phase 7)
+    fixtures/
+      demo_platform/listings.html, images/
+      demo_platform_two/listings.html, images/
   collectors/
     __init__.py
     browser_collector.py           # Playwright-based fetch — absorbs src/browser/browser_manager.py
@@ -61,6 +65,7 @@ src/
     deduplicator.py                    # within-platform duplicate detection (V1); cross-platform is V2
     enricher.py                         # derived fields, consults knowledge_entries
     change_detector.py                   # decides when to write new price/availability history rows
+    engine.py                             # composes the four above into the write sequence (07_Analysis_Engine.md) — added during implementation, not in the original plan; core/agent.py must not contain per-listing business logic, so that composition needed a home in analyzers/
   ranking/
     __init__.py
     ranking_engine.py                     # see 08_Ranking_System.md
@@ -75,8 +80,7 @@ src/
     knowledge_repository.py                      # knowledge_entries
   services/
     __init__.py
-    report_generator.py                           # HTML Report Generator — see 09_Report_System.md
-    report_templates/                              # Jinja2-style templates
+    report_generator.py                           # HTML Report Generator — see 09_Report_System.md. Plain Python string templating, not Jinja2 (not an installed dependency, not needed for V1's layout)
   ui/
     __init__.py
     cli.py                                          # V1 entry point — the only place a human interacts with the system

@@ -1,6 +1,10 @@
 # 10 — Roadmap
 
-Status: V1.0 phased plan confirmed (2026-07-14). Update this as phases complete or priorities shift — it should always reflect current reality, not the original plan.
+Status: **All 7 V1.0 phases complete (2026-07-14).** The full pipeline runs end-to-end against a real (reference/demo, not commercial) connector — see the "Reference Connector Strategy" note below. Update this as priorities shift for whatever comes next (a real platform connector, most likely) — it should always reflect current reality, not the original plan.
+
+## Reference Connector Strategy
+
+No real rental platform had been chosen when Phases 3–7 were built (the "which platform first" question in [../notes/Questions.md](../notes/Questions.md) was still open). Rather than block architecture completion on that product decision, or unilaterally pick a real commercial site to scrape without confirming its ToS, every phase from here on was proven against **`demo_platform`** and **`demo_platform_two`** — real `Connector` implementations that fetch real local HTML fixtures via a real Playwright browser and parse them with BeautifulSoup, exactly like a connector for a live site would, but touching no external service. This is explicitly not a shortcut around the exit criteria — every fetch, parse, database write, and report generation described below is real; only the *source* is a controlled fixture instead of a commercial website. Swapping in a real platform means writing one more connector implementing the same contract (see [06_Connector_Framework.md](06_Connector_Framework.md)) — nothing else changes, which Phase 7 exists specifically to demonstrate.
 
 ## Why This Order
 
@@ -24,35 +28,40 @@ Repo scaffolded, working agreement established, documentation structure in place
 - `discovery/platform_registry.py`, `discovery/discovery_agent.py`
 - Exit criteria met: `tests/discovery/test_discovery_agent.py` proves `DiscoveryAgent.discover(request)` returns a registered active platform and excludes inactive ones. **Note:** this is proven with a test-registered platform, not a real seed row in `data/rental_intelligence.db` — the actual first platform is still an open question (see [../notes/Questions.md](../notes/Questions.md)), so nothing fictional was seeded into the real database.
 
-## Phase 3 — Collectors
+## Phase 3 — Collectors (done, 2026-07-14)
 
-- `collectors/browser_collector.py` (the promoted `browser_manager.py`), `collectors/raw_page_store.py`, `collectors/image_collector.py`
-- Exit criteria: can fetch and persist a real page from the seed platform into `data/raw_pages/`, independent of any connector-level parsing yet
+- `collectors/browser_collector.py` (the promoted `browser_manager.py`), `collectors/raw_page_store.py`, `collectors/image_collector.py`, plus `collectors/http_collector.py` (not originally listed, added for completeness per docs/02)
+- Exit criteria met: `tests/collectors/test_raw_page_store.py::test_fetch_and_persist_a_real_page` does a real Playwright fetch of `https://example.com` (IANA's reserved test domain) and really saves it to disk
 
-## Phase 4 — First Connector, End-to-End
+## Phase 4 — First Connector, End-to-End (done, 2026-07-14)
 
-- One real connector for the seed platform, implementing the contract in [06_Connector_Framework.md](06_Connector_Framework.md)
-- `search/search_request.py` + a minimal `search/criteria.py` registry (enough fields to run one real search)
-- `analyzers/normalizer.py` + `deduplicator.py` + `change_detector.py` (enrichment can wait for Phase 5)
-- Exit criteria: one real `SearchRequest` → real listings → rows in `apartments`/`apartment_price_history`/`apartment_availability_history`/`apartment_images`. This is the first point the whole pipeline shape from [01_System_Architecture.md](01_System_Architecture.md) is actually proven, not just designed.
+- `connectors/base.py` (Connector contract + `RawListing`), `connectors/demo_platform.py` (see "Reference Connector Strategy" above)
+- `search/search_request.py` + `search/criteria.py` (extensible filter registry: `max_price`, `min_price`, `min_bedrooms`, `min_bathrooms`, `min_sqft`)
+- `analyzers/normalizer.py`, `deduplicator.py`, `change_detector.py`, `enricher.py`, and `analyzers/engine.py` (an addition not in the original file list — composes the other four into the write sequence from [07_Analysis_Engine.md](07_Analysis_Engine.md); needed because that composition has to live somewhere and core/agent.py must not contain per-listing business logic)
+- `core/agent.py` (`RentalResearchAgent`) — sequences Discovery → Connector → Analysis, isolates a broken connector so it doesn't abort the whole run
+- Exit criteria met: `tests/core/test_agent.py` — a real `SearchRequest` run through the real orchestrator against the real `demo_platform` connector produces real rows in `apartments`/`apartment_price_history`/`apartment_availability_history`/`apartment_images`
 
-## Phase 5 — Ranking + Reports
+## Phase 5 — Ranking + Reports (done, 2026-07-14)
 
-- `ranking/ranking_engine.py`, `ranking/scoring.py`
-- `services/report_generator.py` + templates
-- `search_repository` writes for `search_requests`/`search_results` (making Phase 4's runs properly reproducible per Principle 4, not just stored)
-- `ui/cli.py` ties it all together as one runnable command
-- Exit criteria: running the CLI end-to-end produces `output/<search_id>.html` with real data, images, URLs, and score breakdowns
+- `ranking/ranking_engine.py`, `ranking/scoring.py` (weighted-sum, reusing the same filter registry as `search/criteria.py`)
+- `services/report_generator.py` — plain Python string templating, not Jinja2 (it isn't an installed dependency and V1's layout doesn't need a templating engine — resolves the "proposal, not yet locked in" note in [09_Report_System.md](09_Report_System.md))
+- `core/agent.py` extended to write `search_results` rows and call the report generator
+- `ui/cli.py` — the real V1 entry point; `src/rental_agent.py` now delegates to it (previously a leftover OpenAI-key status check from before this architecture existed — retired, see [../learning/architecture_notes.md](../learning/architecture_notes.md))
+- Exit criteria met: `tests/ui/test_cli.py` runs the CLI end-to-end and gets a real `output/<search_id>.html` with real prices, images, original URLs, and score breakdowns. **Also run for real once** (not just in tests) against the actual project `data/`/`output/` folders — see the dev journal.
 
-## Phase 6 — Re-run & Compare
+## Phase 6 — Re-run & Compare (done, 2026-07-14)
 
-- Run the same `SearchRequest` again against the same platform after some real time has passed
-- Exit criteria: `apartment_price_history`/`apartment_availability_history` show real second entries where prices/status actually changed, and nothing was overwritten — this is the first real validation of Principles 1, 3, and 4, not just a schema that supports them in theory
+- No new modules — this phase is a test proving Phases 1–5 actually behave correctly together, not new code
+- Exit criteria met: `tests/core/test_reproducibility.py` edits the real fixture in place to simulate a price change, re-runs the same search through the real orchestrator, and confirms `apartment_price_history` gets a second row without losing the first, and that each search's `search_results` snapshot keeps the price *as observed at that search* even after the second run changes the live data
 
-## Phase 7 — Second Connector
+## Phase 7 — Second Connector (done, 2026-07-14)
 
-- A second, different platform, implementing the same contract
-- Exit criteria: added with zero changes to `analyzers/`, `ranking/`, `storage/`, or `services/` — if anything outside `connectors/`/`discovery/` needed to change, that's a signal the Principle 7 boundary leaked somewhere in Phases 1–5 and needs fixing before a third platform makes it worse
+- `connectors/demo_platform_two.py` — a genuinely different fixture shape (table/tr/td markup, different class names, `data-id` instead of `data-listing-id`) than `demo_platform.py`, specifically so parsing couldn't be copy-pasted
+- Exit criteria met: `tests/core/test_multi_platform.py` — added with zero changes to `analyzers/`, `ranking/`, `storage/`, or `services/` (verifiable directly: no commit touching this phase modifies those folders); both platforms contribute results to one search
+
+## What's Next
+
+The architecture is complete and proven end-to-end. What remains is not architectural: **pick a real first platform** (closing the open question in [../notes/Questions.md](../notes/Questions.md)) and write one connector for it, following the exact pattern `demo_platform.py`/`demo_platform_two.py` already established.
 
 ## V2+ (explicitly deferred, not in V1.0)
 

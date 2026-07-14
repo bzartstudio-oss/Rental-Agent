@@ -1,19 +1,16 @@
-import os
-from pathlib import Path
+"""Thin script wrapper — delegates straight to ui/cli.py (docs/02_Folder_Guide.md).
 
+Superseded by this the previous version of this file (a standalone OpenAI-API-key status
+check, from before the V1.0 architecture existed) — see learning/architecture_notes.md
+2026-07-14. AI integration is deferred to V2, so there is no longer anything for this
+file to check; it now does what its docstring always said it eventually would.
+"""
 
-def build_status_message(api_key: str | None) -> str:
-    """Return a simple status message for the rental agent setup."""
-    if api_key:
-        return "Rental agent is ready to use OpenAI integration."
+from __future__ import annotations
 
-    return "Rental agent is not configured yet. Set OPENAI_API_KEY in your environment or .env file."
+import sys
 
-
-def main() -> None:
-    api_key = os.getenv("OPENAI_API_KEY") or None
-    print(build_status_message(api_key))
-
+from src.ui.cli import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

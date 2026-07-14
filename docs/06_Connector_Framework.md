@@ -40,10 +40,18 @@ A connector's `search()` includes image URLs in each `RawListing`. It is the Ana
 4. Add a test in `tests/connectors/test_<platform_id>.py`
 5. Log platform-specific findings (rate limits, auth, page structure) in [../notes/Research.md](../notes/Research.md) first, then durable lessons in [../learning/playwright_notes.md](../learning/playwright_notes.md) or a new topic file if warranted
 
+## Existing Connectors (2026-07-14)
+
+- **`demo_platform.py`** and **`demo_platform_two.py`** — real connectors (real Playwright fetch, real BeautifulSoup parsing) against local HTML fixtures, not live commercial sites. Built to prove the whole framework end-to-end while the actual first platform target was still an open product decision — see [10_Roadmap.md](10_Roadmap.md) "Reference Connector Strategy". Not real rental platforms; each module's own docstring says so.
+
+No real-platform connector exists yet. Adding one is the next real piece of work, following the same steps below.
+
 ## Error Handling & Rate Limiting
 
-Every connector must fail gracefully — a broken platform must not crash the whole `RentalResearchAgent` run (see orchestrator responsibility in [01_System_Architecture.md](01_System_Architecture.md)). *TBD: exact retry/backoff policy* — respect reasonable rate limits / robots.txt for scraped sites regardless.
+Every connector must fail gracefully — a broken platform must not crash the whole `RentalResearchAgent` run. **Resolved (2026-07-14):** `core/agent.py` catches any exception from a connector's `search()` call and skips that platform, continuing with whatever other platforms returned — see the next section, which used to be an open question here.
 
-## Open Questions
+*Still TBD: exact retry/backoff policy* — respect reasonable rate limits / robots.txt for scraped sites regardless.
 
-- Should a connector failure block the whole `SearchRequest`, or continue with partial results and flag the gap in the Report? *Leaning toward continue-with-partial-results*, since Principle 1 ("never lose information") argues against discarding whatever platforms *did* succeed — to confirm once a second connector exists to actually observe a partial-failure scenario.
+## Resolved: Connector Failure Handling
+
+Continue with partial results rather than aborting the whole `SearchRequest` — Principle 1 ("never lose information") argues against discarding whatever platforms *did* succeed. Proven in `tests/core/test_agent.py::test_a_broken_connector_does_not_crash_the_whole_run`, which registers a platform pointing at a nonexistent connector module alongside a working one and confirms the working platform's results still come through.

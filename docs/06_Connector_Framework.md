@@ -1,6 +1,7 @@
 # 06 — Connector Framework
 
-Status: V1.0 design confirmed (2026-07-14) — introduces the Connector/Collector split.
+Status: V1.0 Connector/Collector split live in code. **v2.0 Connector SDK designed
+2026-07-14, not yet implemented** — see "Connector SDK" below.
 
 ## Why a Connector Framework
 
@@ -55,3 +56,68 @@ Every connector must fail gracefully — a broken platform must not crash the wh
 ## Resolved: Connector Failure Handling
 
 Continue with partial results rather than aborting the whole `SearchRequest` — Principle 1 ("never lose information") argues against discarding whatever platforms *did* succeed. Proven in `tests/core/test_agent.py::test_a_broken_connector_does_not_crash_the_whole_run`, which registers a platform pointing at a nonexistent connector module alongside a working one and confirms the working platform's results still come through.
+
+## Connector SDK (v2.0, designed — not yet implemented)
+
+**Problem this solves:** `demo_platform.py` and `demo_platform_two.py` (v1.1) each
+independently implement the same three-step sequence — fetch via `BrowserCollector`,
+save the raw page via `raw_page_store`, then parse. That's not platform-specific logic;
+it's boilerplate duplicated once per connector, which is exactly what "a new connector
+should require minimal code" says shouldn't happen once there are more than two.
+
+**Design: `BaseConnector` as a template method.** `connectors/base.py` grows from a bare
+`ABC` with one abstract method into a class that implements `search()` itself, calling
+out to smaller hooks that subclasses provide:
+
+```
+class BaseConnector(ABC):
+    platform_id: str
+
+    def search(self, criteria: dict) -> list[RawListing]:
+        # Implemented ONCE, here — not per connector:
+        url = self.build_url(criteria)
+        html = self.fetch(url)
+        raw_page_store.save_page(self.platform_id, html)   # every connector gets this for free
+        return self.parse(html)
+
+    def fetch(self, url: str) -> str:
+        # Default: BrowserCollector. A connector for a platform with a real API
+        # overrides this to use http_collector instead — one method, not a
+        # parallel class hierarchy.
+        with BrowserCollector() as browser:
+            return browser.fetch(url)
+
+    @abstractmethod
+    def build_url(self, criteria: dict) -> str: ...   # the ONE genuinely platform-specific thing
+
+    @abstractmethod
+    def parse(self, html: str) -> list[RawListing]: ...  # the OTHER genuinely platform-specific thing
+```
+
+A new connector subclass implements exactly two methods (`build_url`, `parse`) — fetching
+and raw-page persistence are inherited, not rewritten. `demo_platform.py`/
+`demo_platform_two.py` migrate to this base with no behavior change (their `build_url`
+becomes "return the fixture's `file://` URI, ignore criteria" — unchanged from what they
+do today, just relocated out of `search()`).
+
+**Extraction helpers.** `base.py` also gains small static helpers used by every `parse()`
+implementation today via repeated BeautifulSoup calls — `_text(element, selector)`,
+`_number(element, selector)`, `_attr(element, selector, attribute)` — each wrapping the
+"find element, get text/attribute, handle missing gracefully" pattern currently
+duplicated across both demo connectors' `_parse()` methods.
+
+**What stays exactly the same:** the `Connector` name is kept as an alias for
+`BaseConnector` (or `BaseConnector` replaces it directly — an implementation-time
+choice, not an architecture one) so `core/agent.py`'s `CONNECTOR = <Subclass>` /
+`isinstance` expectations don't change. The Collector layer (`browser_collector.py`,
+`http_collector.py`, `image_collector.py`, `raw_page_store.py`) is unchanged — the SDK
+calls the same collectors, just from inside `BaseConnector` instead of from each
+connector module.
+
+## Image Management (v2.0, designed — not yet implemented)
+
+A connector's role is unchanged: report each listing's image URLs in `RawListing.image_urls`,
+same as v1.0/v1.1. What's new lives downstream, in the Analysis Engine, not here — see
+[07_Analysis_Engine.md](07_Analysis_Engine.md) "Image Change Detection" for how the
+system now notices when a re-observed apartment's image set has changed (new photos
+added, old ones removed) instead of only handling images at first-discovery time.

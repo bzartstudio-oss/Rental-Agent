@@ -1,6 +1,9 @@
 # 01 — System Architecture
 
-Status: V1.0 architecture confirmed (2026-07-14). This is the map of the whole system — read this first, then follow the links into the doc that owns the detail for each component.
+Status: V1.0/v1.1 pipeline live in code. **v2.0 (Knowledge Engine feedback loop,
+Search Memory, Deep Analysis Engine) designed 2026-07-14, not yet implemented** — see
+"The v2.0 Feedback Loop" below. This is the map of the whole system — read this first,
+then follow the links into the doc that owns the detail for each component.
 
 ## Orchestrator: the Rental Research Agent
 
@@ -48,8 +51,29 @@ Status: V1.0 architecture confirmed (2026-07-14). This is the map of the whole s
            ▼
    ┌───────────────┐
    │ HTML Report Generator │──writes──▶ output/*.html                          (services/)
-   └───────────────┘
+   └───────┬───────┘
+           ▼
+   ┌───────────────┐
+   │ Knowledge Engine │──writes──▶ platform_performance_observations ──rolls up──▶ platforms
+   └───────────────┘                                                             (knowledge/)
 ```
+
+## The v2.0 Feedback Loop
+
+Everything above the `HTML Report Generator` box is v1.0/v1.1, live, unchanged in shape.
+v2.0 adds one new terminal step: after a run completes, the **Knowledge Engine**
+([16_Knowledge_Engine.md](16_Knowledge_Engine.md)) records what happened (which platforms
+worked, how well) as permanent observations, which roll up into the `platforms` table's
+Platform Intelligence columns ([05_Platform_Discovery.md](05_Platform_Discovery.md)).
+This is the literal mechanism behind "self-improving through accumulated knowledge"
+([00_Project_Vision.md](00_Project_Vision.md) Mission) — the *next* search's Discovery
+Agent reads a `platforms` table that already reflects everything learned from every prior
+search, without any code having changed. Two other v2.0 additions thread through the
+existing boxes rather than adding new ones: the Analysis Engine box now also runs the
+**Deep Analysis Engine** ([07_Analysis_Engine.md](07_Analysis_Engine.md)) and writes
+**Search Memory** ([17_Search_Memory.md](17_Search_Memory.md)) comparison data; the
+Ranking Engine box now consults the **Dynamic Filter Engine**
+([04_Search_Request.md](04_Search_Request.md)).
 
 ## Module Responsibility Table
 
@@ -66,6 +90,7 @@ Status: V1.0 architecture confirmed (2026-07-14). This is the map of the whole s
 | `services/` | Cross-cutting output services — currently just the HTML Report Generator | Ranking/analysis logic | [09_Report_System.md](09_Report_System.md) |
 | `ui/` | Entry points a human runs (CLI in V1) | Business logic — a UI module only calls `core.agent` | [02_Folder_Guide.md](02_Folder_Guide.md) |
 | `utils/` | Generic helpers (logging, ID generation) with zero project-specific knowledge | Anything stateful or business-specific | [02_Folder_Guide.md](02_Folder_Guide.md) |
+| `knowledge/` **(v2.0, designed)** | Record per-search platform performance observations; recompute Platform Intelligence rollups | Anything about *what* to search or *how* to parse — purely observational | [16_Knowledge_Engine.md](16_Knowledge_Engine.md) |
 
 ## The Independence Guardrail
 
@@ -87,7 +112,7 @@ This distinction matters: building a fully generic multi-type schema today, befo
 |---|---|---|
 | Language/runtime | Python, project-local `.venv` | Already established — see [../learning/python_notes.md](../learning/python_notes.md) |
 | Browser automation | Playwright + Chromium | Already installed — see [../learning/playwright_notes.md](../learning/playwright_notes.md); needed for platforms without a usable public API |
-| **Storage engine** | **SQLite**, single file at `data/rental_intelligence.db` | Decided 2026-07-14. Needs real relational queries (price trend for one apartment, diff between two search runs) that flat JSON files make painful; single-machine/single-user in V1 so no server/concurrency needs; zero extra dependency (`sqlite3` is in the Python standard library); still a plain file, so it fits naturally under `data/` alongside the file-based folders. Full schema in [03_Data_Model.md](03_Data_Model.md). This closes the open item in [../learning/database_notes.md](../learning/database_notes.md). |
+| **Storage engine** | **SQLite**, single file at `data/rental_intelligence.db` | Decided 2026-07-14. Needs real relational queries (price trend for one apartment, diff between two search runs) that flat JSON files make painful; single-machine/single-user in V1 so no server/concurrency needs; zero extra dependency (`sqlite3` is in the Python standard library); still a plain file, so it fits naturally under `data/` alongside the file-based folders. Full schema in [03_Data_Model.md](03_Data_Model.md). This closes the open item in [../learning/database_notes.md](../learning/database_notes.md). **Reconsidered 2026-07-14** against "hundreds of thousands of records, multiple countries": SQLite handles single-digit millions of rows with proper indexing without difficulty — the scale concern doesn't invalidate the choice by itself. What *would*: concurrent multi-writer access (e.g. multiple searches running in parallel processes) or true distributed/multi-machine deployment, neither of which is a v2.0 requirement. Kept as-is; PostgreSQL is the documented next step if either of those becomes real, not a speculative change now. |
 | Raw content storage | Plain files under `data/raw_pages/`, `data/media/` — not in SQLite | Images and full HTML dumps don't belong in relational row storage; SQLite rows reference them by path |
 | Report templating | Jinja2-style HTML templates in `services/report_templates/` | *Proposal, not yet locked* — see [09_Report_System.md](09_Report_System.md) |
 

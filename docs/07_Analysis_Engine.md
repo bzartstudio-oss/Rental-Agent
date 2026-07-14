@@ -1,41 +1,119 @@
 # 07 — Analysis Engine
 
-Status: V1.0 design confirmed (2026-07-14) — this is where Principles 1 and 3 (never lose information, historical versions) actually get implemented as writes.
+Status: V1.0 core write sequence live in code. **v2.0 Deep Analysis Engine, extended
+Apartment History, and Image Change Detection designed 2026-07-14, not yet implemented.**
 
-## Goal
+## Goal (unchanged)
 
 Take the raw, inconsistent output from each connector ([06_Connector_Framework.md](06_Connector_Framework.md)) and turn it into normalized `Apartment` records matching [03_Data_Model.md](03_Data_Model.md), while writing history rather than overwriting.
 
 ## Pipeline within the Analysis Engine
 
-Four sub-steps, each a separate module (see [02_Folder_Guide.md](02_Folder_Guide.md)):
+Sub-steps, each a separate module (see [02_Folder_Guide.md](02_Folder_Guide.md)):
 
-1. **`normalizer.py`** — `RawListing` → `Apartment`-shaped data (not yet written to the database). Resolves currency/period normalization, structures the address if possible.
-2. **`deduplicator.py`** — checks whether this listing already exists (same `platform_id` + `platform_listing_id` → same `apartments` row) or is a new one. **V1 scope: within-platform only.** Cross-platform de-duplication (the same physical apartment on two sites) is explicitly V2 — see "Cross-Platform De-Duplication (V2)" below.
-3. **`change_detector.py`** — for an existing apartment, compares the newly normalized price/status against `apartments.current_price`/`current_status`. Only if they differ does it write a new row to `apartment_price_history` / `apartment_availability_history` — this is what keeps the history tables from filling up with a redundant row on every single search that happens to re-observe an unchanged listing.
-4. **`enricher.py`** — derived fields computed once, here, rather than per-connector (so the calculation is identical regardless of source platform): e.g. price-per-sqft, distance from a reference point. Consults `knowledge_entries` for anything that needs curated reference data (e.g. neighborhood benchmarks).
+1. **`normalizer.py`** (v1.1, live) — `RawListing` → `Apartment`-shaped data. **v2.0
+   addition:** also normalizes `description` (new field — see
+   [03_Data_Model.md](03_Data_Model.md) `apartments.description`).
+2. **`deduplicator.py`** (v1.1, live) — within-platform identity lookup, unchanged.
+3. **`change_detector.py`** (v1.1, live) — compares price/status. **v2.0 addition:**
+   also compares `title` and `description` against current values, writing to the new
+   generic `apartment_change_log` (see [03_Data_Model.md](03_Data_Model.md)) rather than
+   a dedicated table each — this is the concrete implementation of "Track... title
+   changes / description changes" from the mission requirements.
+4. **`enricher.py`** (v1.1, live, minimal) — becomes the **Deep Analysis Engine** in
+   v2.0, see below. v1.1's one function (`price_per_sqft`, computed-on-read) is kept
+   as-is; v2.0 adds new, separately-computed metrics alongside it.
+5. **`engine.py`** (v1.1, live) — the write-sequence composition. **v2.0 addition:** also
+   calls image-change detection and the Deep Analysis Engine's metric computation as part
+   of the same per-listing sequence (see updated sequence below).
 
-## Write Sequence (per listing)
+## Write Sequence (per listing) — v2.0
 
 ```
 RawListing
-  → normalize
+  → normalize (now includes description)
   → apartment already exists (by platform_id + platform_listing_id)?
-       NO  → INSERT into apartments (first_seen_at = now); INSERT initial apartment_price_history + apartment_availability_history rows
-       YES → UPDATE apartments.last_seen_at, current_price, current_status
-             IF price changed → INSERT apartment_price_history row
-             IF status changed → INSERT apartment_availability_history row
-  → download images via collectors/image_collector.py → INSERT apartment_images rows
-  → enrich → (fields live on the apartments row or are computed on demand — TBD, see below)
+       NO  → INSERT into apartments (first_seen_at = now)
+             INSERT initial apartment_price_history + apartment_availability_history rows
+             INSERT initial apartment_change_log rows for title/description (old_value = NULL)
+             download images → INSERT apartment_images (is_current = 1) + apartment_image_events ("added") rows
+       YES → UPDATE apartments.last_seen_at, current_price, current_status, title, description
+             IF price changed    → INSERT apartment_price_history row
+             IF status changed   → INSERT apartment_availability_history row
+             IF title changed    → INSERT apartment_change_log row (field_name="title")
+             IF description changed → INSERT apartment_change_log row (field_name="description")
+             → diff current apartment_images against this observation's image_urls (see
+               "Image Change Detection" below); INSERT apartment_image_events for any
+               added/removed images
+  → Deep Analysis Engine: compute/refresh applicable metrics → INSERT apartment_analysis_metrics rows
 ```
 
-This sequence is what "every search updates permanent databases" (Principle 2) means concretely — it's not optional post-processing, it's the only way listing data ever enters the database.
+Everything added in v2.0 follows the same "only write on actual change" discipline as
+price/status in v1.0 — re-observing an unchanged apartment still writes nothing new to
+`apartment_change_log`/`apartment_image_events`, exactly like it already writes nothing
+new to the history tables today.
 
-## Cross-Platform De-Duplication (V2)
+## Image Change Detection (v2.0, designed — not yet implemented)
 
-Not built in V1.0 (see Non-Goals in [00_Project_Vision.md](00_Project_Vision.md)). The `apartments.merged_into_id` column already exists in the schema (see [03_Data_Model.md](03_Data_Model.md)) specifically so this can be added later without a migration: a future de-duplication pass would set `merged_into_id` on the duplicate row rather than deleting it (Principle 1 — never lose information, even a listing later identified as a duplicate keeps its own observation history).
+Requirement: "Detect image changes between executions." On a re-observation:
+
+1. Load the apartment's current `apartment_images` rows where `is_current = 1`.
+2. Compare their `source_url` set against this observation's `RawListing.image_urls`.
+3. For any URL present now but not before: download it, `INSERT apartment_images`
+   (`is_current = 1`), `INSERT apartment_image_events` (`event = "added"`).
+4. For any URL present before but not now: `UPDATE apartment_images SET is_current = 0`
+   (never delete the row — the image stays downloaded and queryable), `INSERT
+   apartment_image_events` (`event = "removed"`).
+
+This is the same append-only discipline as everything else — a "removed" image is still
+on disk and still in `apartment_images`, just flagged as no longer part of the current
+listing.
+
+## Deep Analysis Engine (v2.0, designed — not yet implemented)
+
+Requirement 6 — the Research Agent doesn't stop at scraping. New modules alongside the
+existing four:
+
+- **`analyzers/distance.py`** — walking distance, public transport time/score, from the
+  apartment's `latitude`/`longitude` to whatever reference point(s) a `SearchRequest`
+  cares about (see [04_Search_Request.md](04_Search_Request.md) "The Proximity/Score
+  Dependency"). Requires a geocoding/routing data source — *which one is an
+  implementation-time decision, not resolved here* (could be a paid API, an open dataset,
+  or a knowledge-base-backed approximation; whichever is chosen must respect the same
+  "no live scraping of a commercial site without checking ToS" caution already applied to
+  connectors elsewhere in this project).
+- **`analyzers/nearby.py`** — counts/distances to nearby amenities (supermarkets,
+  universities, gyms, pharmacies, hospitals) — same external-data-source caveat as above.
+- **`analyzers/scores.py`** — composite scores (`lifestyle_score`, `convenience_score`,
+  `location_score`) computed from the outputs of `distance.py`/`nearby.py` plus
+  `knowledge_entries` (e.g. a neighborhood safety/noise benchmark). "Future environmental
+  indicators" (air quality, flood risk, etc.) slot in here later as more `metric_name`
+  values — no schema change needed, per `apartment_analysis_metrics`'s generic design.
+
+Every computed value is written to `apartment_analysis_metrics`
+([03_Data_Model.md](03_Data_Model.md)), tagged with which module computed it and which
+search triggered the computation — never held only in memory, and never silently
+overwritten if recomputed later (a new row, not an update — same versioning principle as
+everything else in this system).
+
+**Resolves the v1.0 open question** ("are enriched fields stored or computed on read?"):
+**both**, split by kind — `price_per_sqft` (a pure function of already-stored
+`current_price`/`sqft`, nothing external) stays computed-on-read, unchanged. Everything
+that requires external data or nontrivial computation (distance, transit, nearby-amenity
+counts, composite scores) is stored in `apartment_analysis_metrics`, because recomputing
+it on every read would be wasteful and because the versioned history of *how a location
+score changed over time* is itself valuable data, not just a cache.
+
+## Cross-Platform De-Duplication (V2, unchanged)
+
+Still not built — see v1.0 reasoning, unaffected by this upgrade.
 
 ## Open Questions
 
-- Are enriched fields (price-per-sqft, etc.) stored as columns on `apartments`, or computed on read? Leaning toward computed-on-read for anything that's a pure function of other stored fields (avoids yet another place that can go stale), stored only for anything that requires external lookups (e.g. distance to a point that isn't part of the request itself). To confirm once the first enrichment rule is actually needed.
-- What counts as a "changed enough to be a new history row" price difference — any change, or a minimum delta to avoid noise from rounding differences across platforms?
+- Which geocoding/transit/nearby-amenity data source to use for the Deep Analysis Engine — a real product/vendor decision, not resolved by this architecture pass.
+- What counts as a "changed enough" difference for `description` (a single typo fix
+  shouldn't spam `apartment_change_log`) — carried over from v1.0's identical open
+  question about price, now also applies to free-text fields where "changed" is fuzzier
+  than a numeric comparison. Proposed: exact string inequality for v2.0 (simplest,
+  consistent with how title/price already work), revisit if it proves too noisy in
+  practice.

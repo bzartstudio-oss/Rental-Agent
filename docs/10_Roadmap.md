@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **All 7 V1.0 phases complete, plus Version 1.1 (Multi-Platform Discovery Framework), as of 2026-07-14.** The full pipeline runs end-to-end against real reference connectors, and the platform registry now tracks 8 real-world platform candidates (2 usable, 6 catalogued for future connectors). See "Reference Connector Strategy" and "Version 1.1" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested (73 tests), as of 2026-07-14.** The full pipeline runs end-to-end against real reference connectors, and the platform registry tracks 8 real-world platform candidates (2 usable, 6 catalogued). **Version 2.0 (Autonomous Rental Intelligence Platform — Knowledge Engine, Apartment History, Search Memory, Platform Intelligence, Dynamic Filter Engine, Deep Analysis Engine, Connector SDK, Agent Architecture) is fully designed as of 2026-07-14 but explicitly not yet implemented** — see "Version 2.0" below for the migration plan and implementation order. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -83,15 +83,98 @@ for the full design. Built on top of the completed v1.0 architecture:
   migrations framework yet — see [../learning/database_notes.md](../learning/database_notes.md))
   and letting it regenerate.
 
-## What's Next
+## Version 2.0 — Autonomous Rental Intelligence Platform (designed, 2026-07-14 — not yet implemented)
 
-Still not architectural: **pick a real first platform and write one connector for it**,
-following the exact pattern `demo_platform.py`/`demo_platform_two.py` already established.
-v1.1 narrows this from an open-ended question to a concrete shortlist — the 6 platforms in
-`discovery/known_platforms.py` are sitting in the registry as `connector_available = False`,
-ready for whichever one gets picked first.
+Full design: [00_Project_Vision.md](00_Project_Vision.md) Mission,
+[03_Data_Model.md](03_Data_Model.md) (schema),
+[04](04_Search_Request.md)/[05](05_Platform_Discovery.md)/[06](06_Connector_Framework.md)/[07](07_Analysis_Engine.md)
+(extended), [15](15_Agent_Architecture.md)/[16](16_Knowledge_Engine.md)/[17](17_Search_Memory.md) (new).
+Per explicit instruction: this is architecture only — no connectors, no `src/` code
+changes yet. What follows is the migration plan and implementation order for when
+building starts.
 
-## V2+ (explicitly deferred, not in V1.0)
+### Migration Plan
+
+**This is the first schema change that gets a real migrations mechanism**, rather than
+another "delete the dev database and let it regenerate" (what v1.1 did — acceptable
+there because the changed columns had no real data yet; not acceptable going forward,
+per "must NEVER lose information from previous searches" and "assume hundreds of
+thousands of records").
+
+1. **Add `storage/migrations/`** — numbered SQL files, plus a new `schema_migrations`
+   table (`version INTEGER PK`, `applied_at TEXT`) that tracks which have run.
+   `storage/database.py`'s schema application step changes from "run `schema.sql`" to
+   "run `schema.sql` (still safe/idempotent for brand-new tables via `CREATE TABLE IF
+   NOT EXISTS`), then run any migration file whose version isn't in
+   `schema_migrations` yet, each inside its own transaction, recording success before
+   moving to the next."
+2. **`0001_v2_knowledge_engine.sql`** — the entire v2.0 change set in one migration:
+   - 6 new tables via `CREATE TABLE IF NOT EXISTS` (safe either way, tracked for audit
+     consistency): `apartment_change_log`, `apartment_image_events`,
+     `platform_performance_observations`, `filter_definitions`,
+     `apartment_analysis_metrics`, `search_observed_apartments`.
+   - `ALTER TABLE ADD COLUMN` for every new column on existing tables — all nullable or
+     defaulted, so existing rows need no backfill: `platforms` (+7 columns),
+     `apartments` (+1: `description`), `apartment_images` (+2: `thumbnail_path`,
+     `is_current` default `1`), `search_requests` (+8).
+3. **Why this one is backward-compatible and the v1.1 one wasn't:** v1.1 dropped/renamed
+   columns (`base_url` → `homepage`/`search_url`, `is_active` removed) — genuinely
+   incompatible with old rows, hence the reset. v2.0 only *adds* nullable columns and new
+   tables — old code paths that don't know about them keep working unmodified, and this
+   migration can run against a database that already has real accumulated data. No dev-db
+   reset needed this time.
+4. **Code changes that ride along with the migration** (not part of the SQL, but must
+   ship in the same commit so the schema and the code that reads/writes it never
+   diverge): `storage/models.py`'s `Platform`/`Apartment`/`ApartmentImage`/
+   `SearchRequestRecord` dataclasses gain the new fields; every repository function that
+   does `SELECT *` and maps to a dataclass needs the new columns added to its mapping.
+
+### Implementation Order
+
+Sequenced by dependency, not by requirement number — schema first, then whatever's
+self-contained, ending with the one piece that has an unresolved external dependency:
+
+1. **Migrations framework + v2.0 schema** (above) — everything else depends on it existing first.
+2. **Apartment History extensions** (`apartment_change_log`, `apartment_image_events`) —
+   a direct, self-contained extension of the existing, working `analyzers/change_detector.py`
+   and `analyzers/engine.py` write sequence. Low risk, high value, do it early.
+3. **Search Memory** (`search_observed_apartments`, `search_requests` run-stats columns,
+   run-over-run comparison) — needed before Knowledge Engine, since Knowledge Engine
+   observations are keyed by `search_id` and conceptually "when did this search finish."
+4. **Knowledge Engine + Platform Intelligence rollups** — depends on Search Memory's
+   `search_id`/timing being solid; this is the "self-improving" mechanism, worth landing
+   before more platforms/connectors get added so every connector built afterward is
+   automatically tracked from its first run.
+5. **Connector SDK** (`BaseConnector` template method) — independent of 2–4, could be
+   done in parallel; migrate `demo_platform.py`/`demo_platform_two.py` onto it as proof,
+   same way Phase 7 proved the original Connector contract.
+6. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–5;
+   migrate the 5 existing filters first (behavior-preserving refactor), then add one or
+   two real filters per new category as *examples* of the pattern working, not all ~25
+   at once — the framework, not the exhaustive filter list, is what v2.0 is scoped to.
+7. **Deep Analysis Engine** (`distance.py`, `nearby.py`, `scores.py`) — last, because it's
+   blocked on a real product/vendor decision (which geocoding/transit/nearby-amenity data
+   source) that hasn't been made — see [07_Analysis_Engine.md](07_Analysis_Engine.md)
+   Open Questions. Framework (the `apartment_analysis_metrics` store, the
+   `SearchRequest` → proximity-filter plumbing) can be built and tested with fake/stubbed
+   metrics before that decision is made; real metric computation waits for it.
+
+Each step: preserve all 73 currently-passing tests, add new tests for the new behavior,
+run the full suite, commit — the same discipline every phase so far has followed.
+
+### After v2.0: Still the Same Answer
+
+Once the above is built, the next real product step is unchanged from before this
+upgrade: **pick a real first platform and write one connector for it** (now using the
+Connector SDK from step 5), following the pattern `demo_platform.py`/`demo_platform_two.py`
+already established. The 6 candidates in `discovery/known_platforms.py` are still
+sitting ready, `connector_available = False`, in [notes/Questions.md](../notes/Questions.md).
+
+## Beyond Version 2.0 (explicitly deferred)
+
+Renamed from "V2+" to avoid confusion with the new, formal "Version 2.0" above — this
+section always meant "later than whatever's current," not literally "version 2." None of
+the items below are addressed by Version 2.0; they're still all genuinely future:
 
 - Cross-platform apartment de-duplication/merging (`apartments.merged_into_id` — see [07_Analysis_Engine.md](07_Analysis_Engine.md))
 - Automated platform discovery (see [05_Platform_Discovery.md](05_Platform_Discovery.md))

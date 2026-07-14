@@ -1,10 +1,19 @@
 # 00 — Project Vision
 
-Status: Core principles and V1.0 scope confirmed (2026-07-14). Problem statement / who-it's-for still open.
+Status: Core principles and V1.0 scope confirmed 2026-07-14; reaffirmed and extended
+with an 8th principle the same day when the mission was restated as the **Autonomous
+Rental Intelligence Platform** (v2.0 — see [10_Roadmap.md](10_Roadmap.md)). Problem
+statement / who-it's-for still open.
 
 ## What This Is
 
-**Rental Intelligence Platform** — not a one-shot scraper. A search doesn't run, print results, and forget them: it's an event that permanently enriches a growing, queryable body of knowledge about the rental market. The second search on the same city should already be smarter than the first, because it can draw on price history, availability trends, and platform knowledge the first search left behind.
+**Autonomous Rental Intelligence Platform** — not a one-shot scraper. A search doesn't run, print results, and forget them: it's an event that permanently enriches a growing, queryable body of knowledge about the rental market. The second search on the same city should already be smarter than the first, because it can draw on price history, availability trends, and platform knowledge the first search left behind.
+
+**Assumed scale (reaffirmed 2026-07-14):** hundreds of thousands of rental records,
+multiple countries. Every v2.0 design decision (schema, module structure) is made
+against this assumption explicitly, not against what the system happens to hold today —
+see [01_System_Architecture.md](01_System_Architecture.md) "Technology Choices" for the
+concrete SQLite-at-this-scale reasoning.
 
 **Rental type: residential apartments** (decided 2026-07-13). Vacation/short-term and equipment rentals are out of scope unless revisited. See [../learning/architecture_notes.md](../learning/architecture_notes.md).
 
@@ -19,6 +28,7 @@ These are non-negotiable constraints on every design decision made in this proje
 5. **All filters are configurable and extensible.** New filter types must be addable without modifying core search logic — see [04_Search_Request.md](04_Search_Request.md).
 6. **The architecture must support new countries, cities, rental types, and data sources without major redesign.** Enforced primarily through the Connector contract ([06_Connector_Framework.md](06_Connector_Framework.md)) being platform-agnostic, not through speculative generalization elsewhere — see "Extensibility Without Over-Engineering" in [01_System_Architecture.md](01_System_Architecture.md).
 7. **Business logic must remain independent from any individual website.** No module outside `connectors/` may contain platform-specific logic or assumptions. This is a hard boundary — see [06_Connector_Framework.md](06_Connector_Framework.md).
+8. **The software stays deterministic and stable; learning happens through data, never by rewriting code.** (Added 2026-07-14.) "Self-improving" means the *data* the system reads — Platform Intelligence rollups, accumulated apartment history — changes what a search returns over time, not that the codebase mutates itself. A future search behaving differently from an earlier one must always be explainable as "the data changed," never "the code changed between runs." See [16_Knowledge_Engine.md](16_Knowledge_Engine.md).
 
 ## V1.0 Scope
 
@@ -39,6 +49,15 @@ The following components ship in V1.0 (see [10_Roadmap.md](10_Roadmap.md) for bu
 - Price history
 
 Explicitly deferred to V2+ (see [10_Roadmap.md](10_Roadmap.md)): cross-platform entity resolution (merging the same physical apartment seen on two platforms into one record), automated platform discovery, AI-assisted ranking/summaries, multi-city/country configuration UI, a web UI (`ui/` ships as a CLI in V1).
+
+**Version 2.0 scope** (designed 2026-07-14, see [10_Roadmap.md](10_Roadmap.md) "Version
+2.0"): Knowledge Engine, extended Apartment History (title/description/image change
+tracking), Search Memory (run-over-run comparison), Platform Intelligence
+(reliability/performance rollups), Dynamic Filter Engine (category-organized, ~25-filter
+taxonomy), Deep Analysis Engine (walking distance, transit, nearby amenities, composite
+scores), Connector SDK (`BaseConnector`), and the Agent Architecture naming convention for
+Discovery/Research/Analysis/Learning/Report/Notification agents. Still explicitly
+deferred by v2.0 too: everything in the paragraph above, unchanged.
 
 ## Problem Statement
 

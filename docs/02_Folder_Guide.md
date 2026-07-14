@@ -1,6 +1,6 @@
 # 02 — Folder Guide
 
-Status: V1.0 package structure **built and tested, not just planned** (2026-07-14) — every file below exists and is exercised by the test suite (56 tests, see [10_Roadmap.md](10_Roadmap.md)), including resolution of the legacy-folder reconciliation that had been deliberately deferred since 2026-07-13 (see [../learning/architecture_notes.md](../learning/architecture_notes.md)).
+Status: V1.0/v1.1 package structure **built and tested** (73 tests, see [10_Roadmap.md](10_Roadmap.md)). **v2.0 additions below are designed, not yet implemented** — marked inline in the tree. Includes the legacy-folder reconciliation resolved 2026-07-14 (see [../learning/architecture_notes.md](../learning/architecture_notes.md)).
 
 ## Top-level folders
 
@@ -28,7 +28,7 @@ Revised now that SQLite is the system of record for structured data (see [03_Dat
 | `cache/` | Short-lived, safe-to-delete request cache | Active |
 | `platform_registry/`, `apartments/`, `search_history/` | Pre-SQLite scaffolding | Superseded — leave empty, do not write new code against these; revisit deletion once `storage/` is implemented and nothing references them |
 
-## `src/` package structure (V1.0)
+## `src/` package structure
 
 ```
 src/
@@ -39,33 +39,54 @@ src/
   search/
     __init__.py
     search_request.py        # SearchRequest — see 04_Search_Request.md
-    criteria.py               # filter/criteria registry
+    criteria.py               # v2.0: registry MECHANICS only (FilterDefinition, register(),
+                                # get_filter(), apply_filters()) — individual filters move out
+                                # to filters/ below [v2.0, designed]
+    filters/                    # [v2.0, designed] — see 04_Search_Request.md
+      __init__.py                 # imports every category module so registration happens on import
+      budget.py                    # min_price, max_price (migrated from criteria.py, unchanged logic)
+      property.py                   # min_bedrooms/bathrooms/sqft (migrated) + property_type, room_type
+      timing.py                      # move_in_date, min_availability_duration
+      proximity.py                    # max_walking_minutes, max_transit_minutes, nearby_* filters
+      amenity.py                       # private_bathroom, air_conditioning, balcony, parking, ...
+      occupant.py                       # gender, student_only, professionals_only
+      score.py                           # safety_score, noise_score, lifestyle/convenience/location_score
   discovery/
     __init__.py
     discovery_agent.py         # DiscoveryAgent — see 05_Platform_Discovery.md
     platform_registry.py         # reads/writes the `platforms` table
+    known_platforms.py             # seed candidate list — see 05_Platform_Discovery.md
   connectors/
     __init__.py
-    base.py                      # Connector contract (RawListing, Connector ABC)
+    base.py                      # v2.0: BaseConnector template method (fetch+save+parse) — see
+                                   # 06_Connector_Framework.md "Connector SDK" [v2.0, designed]
     README.md                     # orientation + link to 06_Connector_Framework.md
-    demo_platform.py               # reference/demo connector — not a real platform, see 10_Roadmap.md
-    demo_platform_two.py            # second reference connector, different fixture shape (Phase 7)
+    demo_platform.py               # reference/demo connector — migrates to BaseConnector [v2.0]
+    demo_platform_two.py            # second reference connector — migrates to BaseConnector [v2.0]
     fixtures/
       demo_platform/listings.html, images/
       demo_platform_two/listings.html, images/
   collectors/
     __init__.py
-    browser_collector.py           # Playwright-based fetch — absorbs src/browser/browser_manager.py
+    browser_collector.py           # Playwright-based fetch
     http_collector.py               # plain HTTP fetch, for platforms with a usable API
     image_collector.py               # downloads listing images into data/media/
     raw_page_store.py                 # persists raw HTML/screenshots into data/raw_pages/
   analyzers/
     __init__.py
-    normalizer.py                     # RawListing -> Apartment shape
+    normalizer.py                     # RawListing -> Apartment shape; v2.0: also normalizes `description`
     deduplicator.py                    # within-platform duplicate detection (V1); cross-platform is V2
-    enricher.py                         # derived fields, consults knowledge_entries
-    change_detector.py                   # decides when to write new price/availability history rows
-    engine.py                             # composes the four above into the write sequence (07_Analysis_Engine.md) — added during implementation, not in the original plan; core/agent.py must not contain per-listing business logic, so that composition needed a home in analyzers/
+    enricher.py                         # price_per_sqft (computed-on-read) — unchanged by v2.0
+    change_detector.py                   # v2.0: also compares title/description, not just price/status
+    engine.py                             # composes the pipeline's write sequence; v2.0: also calls
+                                            # image-change detection + Deep Analysis Engine
+    distance.py                             # [v2.0, designed] walking/transit distance — see 07_Analysis_Engine.md
+    nearby.py                                # [v2.0, designed] nearby-amenity counts/distances
+    scores.py                                 # [v2.0, designed] lifestyle/convenience/location scores
+  knowledge/                                    # [v2.0, designed — new package] see 16_Knowledge_Engine.md
+    __init__.py
+    engine.py                                     # records platform_performance_observations,
+                                                     # recomputes Platform Intelligence rollups
   ranking/
     __init__.py
     ranking_engine.py                     # see 08_Ranking_System.md
@@ -75,15 +96,20 @@ src/
     database.py                             # SQLite connection/session management
     schema.sql                               # DDL for all tables in 03_Data_Model.md
     models.py                                 # dataclasses mirroring each table
-    apartment_repository.py                   # CRUD + history writes for apartments
-    search_repository.py                       # search_requests / search_results
+    apartment_repository.py                   # CRUD + history writes for apartments; v2.0: also
+                                                # apartment_change_log, apartment_image_events
+    search_repository.py                       # search_requests / search_results; v2.0: also
+                                                 # search_observed_apartments, run-stats update
     knowledge_repository.py                      # knowledge_entries
+    platform_intelligence_repository.py            # [v2.0, designed] platform_performance_observations
+                                                     # + rollup writes — see 16_Knowledge_Engine.md
+    analysis_metrics_repository.py                   # [v2.0, designed] apartment_analysis_metrics
   services/
     __init__.py
-    report_generator.py                           # HTML Report Generator — see 09_Report_System.md. Plain Python string templating, not Jinja2 (not an installed dependency, not needed for V1's layout)
+    report_generator.py                           # HTML Report Generator — see 09_Report_System.md
   ui/
     __init__.py
-    cli.py                                          # V1 entry point — the only place a human interacts with the system
+    cli.py                                          # entry point — the only place a human interacts with the system
   utils/
     __init__.py
     logging.py
@@ -118,3 +144,4 @@ This table is a historical record of the reconciliation now that it's done — s
 ## Related Documents
 
 - [01_System_Architecture.md](01_System_Architecture.md)
+- [15_Agent_Architecture.md](15_Agent_Architecture.md), [16_Knowledge_Engine.md](16_Knowledge_Engine.md), [17_Search_Memory.md](17_Search_Memory.md) — v2.0 additions

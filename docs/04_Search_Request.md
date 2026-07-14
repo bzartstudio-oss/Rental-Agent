@@ -1,53 +1,115 @@
 # 04 — Search Request
 
-Status: V1.0 design confirmed (2026-07-14). Concrete parameter list still open (see bottom).
+Status: **v2.0 Dynamic Filter Engine designed (2026-07-14) — not yet implemented.** The
+v1.1 `SearchRequest` + `search/criteria.py` registry pattern (5 filters: `max_price`,
+`min_price`, `min_bedrooms`, `min_bathrooms`, `min_sqft`) stays live in code; this doc
+designs how it scales to the full filter taxonomy the mission requires, without a
+redesign of `SearchRequest` itself — the v1.1 shape already satisfies the requirement,
+it just needs more filters registered, organized so "more filters" doesn't mean "one
+enormous file."
 
-## Definition
+## Definition (unchanged from v1.1)
 
-A `SearchRequest` is the single object that captures everything a user wants when they ask the agent to go find rentals. Every stage in [01_System_Architecture.md](01_System_Architecture.md) either consumes it directly or consumes something derived from it. It is serialized verbatim into `search_requests.criteria_json` (see [03_Data_Model.md](03_Data_Model.md)) — this is what makes a search reproducible.
+A `SearchRequest` is the single object that captures everything a user wants when they
+ask the agent to go find rentals — location, plus an open `criteria: dict` bag validated
+against the filter registry. Serialized verbatim into `search_requests.criteria_json` —
+see [03_Data_Model.md](03_Data_Model.md).
 
-## Design: Configurable and Extensible (Principle 5)
+## Why the v1.1 Design Already Scales
 
-A naive `SearchRequest` as a fixed dataclass with fields like `min_price`, `max_price`, `bedrooms` would violate Principle 5 the moment a new filter type is needed — adding one would mean touching the dataclass, the validation logic, the ranking scorer, *and* every connector's query-building code. Instead:
-
-- `SearchRequest` holds a small set of always-required fields (location, and enough to build a report — see below) plus a `criteria: dict[str, FilterValue]` bag.
-- Each entry in `criteria` is validated and interpreted by a **registered filter definition** (`search/criteria.py`), not by `SearchRequest` itself. A filter definition declares: its key (e.g. `"max_price"`), the expected value type/shape, and how it contributes to matching/scoring.
-- Adding a new filter type in the future means adding one filter definition and registering it — no changes to `SearchRequest`, connectors, or the ranking engine's core loop. This is what "configurable and extensible" means concretely, and it's the same registry pattern the Ranking Engine's scoring consults (see [08_Ranking_System.md](08_Ranking_System.md)).
+The core claim in v1.1 was: "adding a new filter type means adding one filter definition
+and registering it — no changes to `SearchRequest`, connectors, or the ranking engine's
+core loop." That claim gets tested for real by this upgrade's ~25-filter example list. It
+holds, with one addition: **filters are organized by category into a `search/filters/`
+subpackage**, not one `criteria.py` file, so "add a filter" means "add a function to the
+relevant category file" (or create a new category file), never "edit an existing,
+unrelated filter's code."
 
 ```
-SearchRequest
-  id: str (UUID, assigned on creation)
-  created_at: datetime
-  label: str | None
-  location: LocationCriteria        # required — every rental search needs a place
-  criteria: dict[str, Any]           # open bag, validated against the filter registry
+search/
+  search_request.py         # unchanged
+  criteria.py                # registry mechanics only: FilterDefinition, register(),
+                              # get_filter(), apply_filters(), extract_value/weight —
+                              # everything that was here in v1.1 EXCEPT the individual
+                              # filter registrations
+  filters/
+    __init__.py               # imports every category module below, so registration
+                                # happens on package import — nothing else needs to
+                                # change when a category file is added
+    budget.py                  # min_price, max_price  (v1.1, migrated as-is)
+    property.py                 # min_bedrooms, min_bathrooms, min_sqft (v1.1, migrated),
+                                  # property_type, room_type
+    timing.py                    # move_in_date, min_availability_duration
+    proximity.py                  # max_walking_minutes, max_transit_minutes,
+                                    # nearby_supermarket, nearby_university, nearby_gym,
+                                    # nearby_pharmacy, nearby_hospital
+    amenity.py                     # private_bathroom, air_conditioning, balcony,
+                                     # parking, internet, furniture, pets, smoking
+    occupant.py                     # gender, student_only, professionals_only
+    score.py                         # safety_score, noise_score, lifestyle_score,
+                                       # convenience_score, location_score
 ```
 
-## Required Parameters
+This is a **refactor, not a rewrite**: the 5 existing filter registrations move file
+(from `criteria.py` into `filters/budget.py` and `filters/property.py`) with identical
+logic — existing tests for them keep passing unchanged (see
+[10_Roadmap.md](10_Roadmap.md) "Migration Plan").
 
-- **Location** — structured enough to pass to Platform Discovery ([05_Platform_Discovery.md](05_Platform_Discovery.md)) and to connectors' query-building. *TBD exact shape: city+region string vs. structured city/region/country fields.*
+## The Proximity/Score Dependency
 
-## Optional Parameters (initial filter registry entries)
+`proximity.py` and `score.py` filters (`max_walking_minutes`, `safety_score`, etc.)
+`matches()`/`score()` against a value that doesn't exist on `Apartment` itself — it comes
+from `apartment_analysis_metrics`, computed by the Deep Analysis Engine (see
+[07_Analysis_Engine.md](07_Analysis_Engine.md)). This is why the pipeline order (Analysis
+→ Ranking, already established in v1.0) matters more under v2.0 than it did before: a
+proximity/score filter is only usable for a `SearchRequest` if the Analysis Engine has
+already computed that metric for the candidate apartments *in this same run*. A filter
+whose metric hasn't been computed yet should fail closed (exclude the apartment, not
+crash) — exact mechanism is a v2.0 implementation detail, not resolved further here.
 
-Proposed starting set — each becomes one filter definition in `search/criteria.py`:
+## The Room/Flatshare Filter Tension
 
-- `min_price` / `max_price`
-- `bedrooms` (exact or minimum)
-- `bathrooms` (exact or minimum)
-- `min_sqft`
-- `move_in_date`
+`occupant.py` (`gender`, `student_only`, `professionals_only`) and parts of `amenity.py`
+(`private_bathroom` only makes sense for a shared/room listing) describe **flatshare-style
+search** — the exact concept explicitly kept out of scope in
+[00_Project_Vision.md](00_Project_Vision.md) Non-Goals ("not supporting rental types other
+than residential apartments"), and confirmed stale when the old `config/settings.json`
+was reviewed (see [../learning/architecture_notes.md](../learning/architecture_notes.md)).
 
-This list is deliberately not exhaustive — the whole point of the registry design is that it doesn't need to be.
+This doc does not resolve that tension — it's a product-scope decision, not an
+architecture one. What the architecture *does* do is make the tension harmless either
+way: `filter_definitions.applicable_rental_types_json` (see
+[03_Data_Model.md](03_Data_Model.md)) tags `occupant.py`/room-specific `amenity.py`
+filters as applicable to `room`/`shared` rental types. While the system's active scope
+stays apartments-only, those filters are registered (satisfying "future filters must be
+addable") but simply never relevant to a real search. If room-type search is ever
+explicitly greenlit, the filters already exist — only the rental-type scope decision
+changes, not the filter framework.
 
-## Lifecycle
+## `filter_definitions` Is Metadata, Not a Replacement for Code
 
-1. **Submitted** — raw input received via `ui/cli.py`
-2. **Validated** — required fields present; every key in `criteria` matches a registered filter definition and passes its value validation. Invalid requests fail here with a clear error, not deep in the pipeline.
-3. **Persisted** — written to `search_requests` immediately on validation, before execution, so even a search that crashes mid-run leaves a record it was attempted
-4. **Executed** — handed to Platform Discovery
-5. **Completed** — `search_results` rows exist for this `search_id`, and a Report exists ([09_Report_System.md](09_Report_System.md))
+`03_Data_Model.md`'s `filter_definitions` table records *that* a filter exists — its
+category, display name, value type. It is deliberately **not** an attempt to make
+matching/scoring logic itself data-driven (e.g. a rule-expression stored as a string and
+`eval`'d). Building a full no-code rule engine would be real scope creep beyond what's
+asked: the requirement is "addable without changing *existing* code," which the
+open/closed registry pattern already satisfies (a new filter is new code in a new
+location, never a change to code that's already working) — not "addable with *no* code,"
+which would require an entire expression-language interpreter to build and secure safely.
+
+## Required Parameters (unchanged from v1.1)
+
+- **Location** — still a plain string, still an open question on exact structured shape.
+
+## Lifecycle (unchanged from v1.1)
+
+Submitted → Validated → Persisted → Executed → Completed. See v1.1 design, still accurate.
 
 ## Open Questions
 
-- Exact structured shape for `location`.
-- How is a request submitted beyond the CLI — is a saved/re-runnable request file needed in V1, or is re-typing the same CLI flags sufficient for "reproducible"? (The database-level reproducibility from Principle 4 doesn't require this — it's a UX question, not an architecture one.)
+- Exact structured shape for `location` (carried over, still open).
+- Exact fail-closed mechanism when a proximity/score filter references a metric that
+  wasn't computed for a given apartment in a given run.
+- Whether `min_availability_duration` and other `timing.py` filters need their own
+  dedicated apartment field, or can be derived from `current_status` + availability
+  history — not resolved here, deferred to implementation.

@@ -32,8 +32,9 @@ def insert_apartment(conn: sqlite3.Connection, apartment: Apartment) -> None:
         INSERT INTO apartments (
             id, platform_id, platform_listing_id, title, bedrooms, bathrooms, sqft,
             address_raw, address_normalized, latitude, longitude, url,
-            current_price, current_status, first_seen_at, last_seen_at, merged_into_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            current_price, current_status, first_seen_at, last_seen_at, merged_into_id,
+            description
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             apartment.id,
@@ -53,6 +54,9 @@ def insert_apartment(conn: sqlite3.Connection, apartment: Apartment) -> None:
             iso(apartment.first_seen_at),
             iso(apartment.last_seen_at),
             apartment.merged_into_id,
+            # v2.0 (migration 0001) — not yet populated by normalizer.py (that's a Step 2
+            # / Apartment History change, not this sprint's), so always None for now.
+            apartment.description,
         ),
     )
 
@@ -110,6 +114,7 @@ def _row_to_apartment(row: sqlite3.Row) -> Apartment:
         first_seen_at=parse_iso(row["first_seen_at"]),
         last_seen_at=parse_iso(row["last_seen_at"]),
         merged_into_id=row["merged_into_id"],
+        description=row["description"],
     )
 
 
@@ -167,9 +172,21 @@ def get_availability_history(
 
 def add_image(conn: sqlite3.Connection, image: ApartmentImage) -> int:
     cursor = conn.execute(
-        "INSERT INTO apartment_images (apartment_id, source_url, local_path, position, downloaded_at) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (image.apartment_id, image.source_url, image.local_path, image.position, iso(image.downloaded_at)),
+        "INSERT INTO apartment_images "
+        "(apartment_id, source_url, local_path, position, downloaded_at, thumbnail_path, is_current) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            image.apartment_id,
+            image.source_url,
+            image.local_path,
+            image.position,
+            iso(image.downloaded_at),
+            # v2.0 (migration 0001) — thumbnail_path stays None until something populates
+            # it (optional, "cache thumbnails" is a later feature); is_current defaults
+            # True for a freshly-added image, per docs/03_Data_Model.md.
+            image.thumbnail_path,
+            int(image.is_current),
+        ),
     )
     return cursor.lastrowid
 
@@ -187,6 +204,8 @@ def get_images(conn: sqlite3.Connection, apartment_id: str) -> list[ApartmentIma
             local_path=row["local_path"],
             position=row["position"],
             downloaded_at=parse_iso(row["downloaded_at"]),
+            thumbnail_path=row["thumbnail_path"],
+            is_current=bool(row["is_current"]),
         )
         for row in rows
     ]

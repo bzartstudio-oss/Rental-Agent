@@ -53,6 +53,14 @@ class Platform:
     discovery_method: str = "manual"
     notes: str | None = None
     created_at: datetime = field(default_factory=_utcnow)
+    # v2.0 (migration 0001) — Platform Intelligence rollups, docs/05_Platform_Discovery.md.
+    # Computed by the Knowledge Engine (not built yet); always None until that logic exists.
+    connector_version: str | None = None
+    reliability_score: float | None = None
+    success_rate: float | None = None
+    avg_response_time_ms: float | None = None
+    avg_apartment_count: float | None = None
+    duplicate_percentage: float | None = None
 
 
 @dataclass
@@ -74,6 +82,9 @@ class Apartment:
     latitude: float | None = None
     longitude: float | None = None
     merged_into_id: str | None = None  # unused in V1 — reserved for V2 cross-platform dedup
+    # v2.0 (migration 0001) — required before its changes can be tracked in
+    # apartment_change_log; not yet populated by normalizer.py (docs/07_Analysis_Engine.md).
+    description: str | None = None
 
 
 @dataclass
@@ -102,6 +113,11 @@ class ApartmentImage:
     downloaded_at: datetime
     position: int = 0
     id: int | None = None
+    # v2.0 (migration 0001) — docs/03_Data_Model.md. is_current=False means this image
+    # was removed from the listing on a later observation but stays on disk/in the table
+    # (Principle 1) — see apartment_image_events for the add/remove log itself.
+    thumbnail_path: str | None = None
+    is_current: bool = True
 
 
 @dataclass
@@ -115,6 +131,17 @@ class SearchRequestRecord:
     created_at: datetime
     criteria_json: str
     label: str | None = None
+    # v2.0 (migration 0001) — Search Memory, docs/17_Search_Memory.md. All None until a
+    # run completes and RentalResearchAgent.run() is updated to fill them in (not this sprint).
+    execution_time_ms: int | None = None
+    discovered_platform_ids: list[str] | None = None
+    searched_platform_ids: list[str] | None = None
+    apartment_count: int | None = None
+    new_apartment_count: int | None = None
+    removed_apartment_count: int | None = None
+    changed_apartment_count: int | None = None
+    report_path: str | None = None
+    runtime_stats: dict | None = None
 
 
 @dataclass

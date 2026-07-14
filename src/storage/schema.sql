@@ -1,11 +1,21 @@
--- Rental Intelligence Platform — SQLite schema (v1.1)
+-- Rental Intelligence Platform — SQLite schema (base, v1.1 tables)
 -- Design rationale for every table: docs/03_Data_Model.md
--- This file is applied by storage/database.py on first connection (CREATE TABLE IF NOT EXISTS,
--- so it's always safe to run against an existing database). No migrations framework yet
--- (docs/database_notes.md) — a schema change like the v1.1 `platforms` rework requires
--- deleting any existing dev data/rental_intelligence.db and letting it regenerate.
+-- This file is applied by storage/database.py on every connection (CREATE TABLE IF NOT
+-- EXISTS, so it's always safe to run against an existing database) and covers only the
+-- tables that exist unconditionally from the start. Schema CHANGES after this point go
+-- through storage/migrations/ instead — see database.py and
+-- docs/10_Roadmap.md "Migration Plan".
 
 PRAGMA foreign_keys = ON;
+
+-- Tracks which files under storage/migrations/ have been applied, so database.py never
+-- re-runs one and can tell a fresh database from one that needs catching up. Lives in
+-- schema.sql itself (not a migration) because it must exist before any migration-applying
+-- logic can even check what's already been applied.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version      INTEGER PRIMARY KEY,
+    applied_at   TEXT NOT NULL
+);
 
 -- The Platform Registry — managed by the Multi-Platform Discovery Framework
 -- (docs/05_Platform_Discovery.md). Records every known platform, not just ones with a

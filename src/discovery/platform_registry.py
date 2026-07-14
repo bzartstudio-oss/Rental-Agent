@@ -27,8 +27,10 @@ def register_platform(conn: sqlite3.Connection, platform: Platform) -> None:
         INSERT INTO platforms (
             id, name, country, supported_cities, rental_types, homepage, search_url,
             requires_login, connector_available, connector_name, last_verified,
-            discovery_method, notes, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            discovery_method, notes, created_at,
+            connector_version, reliability_score, success_rate, avg_response_time_ms,
+            avg_apartment_count, duplicate_percentage
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             platform.id,
@@ -45,6 +47,14 @@ def register_platform(conn: sqlite3.Connection, platform: Platform) -> None:
             platform.discovery_method,
             platform.notes,
             iso(platform.created_at),
+            # v2.0 (migration 0001) — Platform Intelligence rollups; always None at
+            # registration time, populated later by the Knowledge Engine (not this sprint).
+            platform.connector_version,
+            platform.reliability_score,
+            platform.success_rate,
+            platform.avg_response_time_ms,
+            platform.avg_apartment_count,
+            platform.duplicate_percentage,
         ),
     )
 
@@ -132,4 +142,11 @@ def _row_to_platform(row: sqlite3.Row) -> Platform:
         discovery_method=row["discovery_method"],
         notes=row["notes"],
         created_at=parse_iso(row["created_at"]),
+        # v2.0 (migration 0001) — Platform Intelligence rollups, all nullable.
+        connector_version=row["connector_version"],
+        reliability_score=row["reliability_score"],
+        success_rate=row["success_rate"],
+        avg_response_time_ms=row["avg_response_time_ms"],
+        avg_apartment_count=row["avg_apartment_count"],
+        duplicate_percentage=row["duplicate_percentage"],
     )

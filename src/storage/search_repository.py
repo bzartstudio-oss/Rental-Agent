@@ -5,12 +5,19 @@ price_at_search/status_at_search instead of joining to live apartment data.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from src.storage.models import SearchRequestRecord, SearchResultEntry, iso, parse_iso
 
 
 def insert_search_request(conn: sqlite3.Connection, request: SearchRequestRecord) -> None:
+    """Writes only the v1.1 columns (what was asked) — the v2.0 Search Memory columns
+    (what happened) start NULL and are meant to be filled in later via an UPDATE once a
+    run completes (docs/03_Data_Model.md's one deliberate exception to insert-only). That
+    update isn't built this sprint (no code calls it yet), so this function doesn't
+    attempt to guess values for them.
+    """
     conn.execute(
         "INSERT INTO search_requests (id, created_at, label, criteria_json) VALUES (?, ?, ?, ?)",
         (request.id, iso(request.created_at), request.label, request.criteria_json),
@@ -26,6 +33,21 @@ def get_search_request(conn: sqlite3.Connection, search_id: str) -> SearchReques
         created_at=parse_iso(row["created_at"]),
         label=row["label"],
         criteria_json=row["criteria_json"],
+        # v2.0 (migration 0001) — Search Memory columns, all nullable; None until a
+        # future sprint's run-stats UPDATE actually populates them.
+        execution_time_ms=row["execution_time_ms"],
+        discovered_platform_ids=json.loads(row["discovered_platform_ids_json"])
+        if row["discovered_platform_ids_json"]
+        else None,
+        searched_platform_ids=json.loads(row["searched_platform_ids_json"])
+        if row["searched_platform_ids_json"]
+        else None,
+        apartment_count=row["apartment_count"],
+        new_apartment_count=row["new_apartment_count"],
+        removed_apartment_count=row["removed_apartment_count"],
+        changed_apartment_count=row["changed_apartment_count"],
+        report_path=row["report_path"],
+        runtime_stats=json.loads(row["runtime_stats_json"]) if row["runtime_stats_json"] else None,
     )
 
 

@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested (73 tests), as of 2026-07-14.** The full pipeline runs end-to-end against real reference connectors, and the platform registry tracks 8 real-world platform candidates (2 usable, 6 catalogued). **Version 2.0 (Autonomous Rental Intelligence Platform — Knowledge Engine, Apartment History, Search Memory, Platform Intelligence, Dynamic Filter Engine, Deep Analysis Engine, Connector SDK, Agent Architecture) is fully designed as of 2026-07-14 but explicitly not yet implemented** — see "Version 2.0" below for the migration plan and implementation order. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Step 1 (Migration Framework, Sprint V2.0.1) is done** — schema and migration mechanism only, no business logic for the 6 new tables yet (79 tests passing). Steps 2–7 (Apartment History, Search Memory, Knowledge Engine, Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -93,7 +93,7 @@ Per explicit instruction: this is architecture only — no connectors, no `src/`
 changes yet. What follows is the migration plan and implementation order for when
 building starts.
 
-### Migration Plan
+### Migration Plan (done, 2026-07-14 — Sprint V2.0.1)
 
 **This is the first schema change that gets a real migrations mechanism**, rather than
 another "delete the dev database and let it regenerate" (what v1.1 did — acceptable
@@ -101,40 +101,53 @@ there because the changed columns had no real data yet; not acceptable going for
 per "must NEVER lose information from previous searches" and "assume hundreds of
 thousands of records").
 
-1. **Add `storage/migrations/`** — numbered SQL files, plus a new `schema_migrations`
-   table (`version INTEGER PK`, `applied_at TEXT`) that tracks which have run.
-   `storage/database.py`'s schema application step changes from "run `schema.sql`" to
-   "run `schema.sql` (still safe/idempotent for brand-new tables via `CREATE TABLE IF
-   NOT EXISTS`), then run any migration file whose version isn't in
-   `schema_migrations` yet, each inside its own transaction, recording success before
-   moving to the next."
+1. **`storage/migrations/`** — numbered SQL files, plus a `schema_migrations` table
+   (`version INTEGER PK`, `applied_at TEXT`) tracking which have run.
+   `storage/database.py` runs `schema.sql` (unchanged, still idempotent via `CREATE
+   TABLE IF NOT EXISTS`), then discovers every migration file, sorts by **numeric**
+   version (not filesystem/alphabetical order — `0002` must run before `0010`), and
+   applies whichever aren't yet in `schema_migrations`, each in its own real transaction.
 2. **`0001_v2_knowledge_engine.sql`** — the entire v2.0 change set in one migration:
-   - 6 new tables via `CREATE TABLE IF NOT EXISTS` (safe either way, tracked for audit
-     consistency): `apartment_change_log`, `apartment_image_events`,
-     `platform_performance_observations`, `filter_definitions`,
-     `apartment_analysis_metrics`, `search_observed_apartments`.
+   - 6 new tables via `CREATE TABLE IF NOT EXISTS`: `apartment_change_log`,
+     `apartment_image_events`, `platform_performance_observations`,
+     `filter_definitions`, `apartment_analysis_metrics`, `search_observed_apartments`.
    - `ALTER TABLE ADD COLUMN` for every new column on existing tables — all nullable or
-     defaulted, so existing rows need no backfill: `platforms` (+7 columns),
-     `apartments` (+1: `description`), `apartment_images` (+2: `thumbnail_path`,
-     `is_current` default `1`), `search_requests` (+8).
+     defaulted, so existing rows need no backfill: `platforms` (+6 columns —
+     corrected from this doc's original "+7," `docs/03_Data_Model.md` was always the
+     accurate count), `apartments` (+1: `description`), `apartment_images` (+2:
+     `thumbnail_path`, `is_current` default `1`), `search_requests` (+9 — corrected
+     from "+8" here for the same reason).
 3. **Why this one is backward-compatible and the v1.1 one wasn't:** v1.1 dropped/renamed
    columns (`base_url` → `homepage`/`search_url`, `is_active` removed) — genuinely
    incompatible with old rows, hence the reset. v2.0 only *adds* nullable columns and new
-   tables — old code paths that don't know about them keep working unmodified, and this
-   migration can run against a database that already has real accumulated data. No dev-db
-   reset needed this time.
-4. **Code changes that ride along with the migration** (not part of the SQL, but must
-   ship in the same commit so the schema and the code that reads/writes it never
-   diverge): `storage/models.py`'s `Platform`/`Apartment`/`ApartmentImage`/
-   `SearchRequestRecord` dataclasses gain the new fields; every repository function that
-   does `SELECT *` and maps to a dataclass needs the new columns added to its mapping.
+   tables — old code paths that don't know about them keep working unmodified.
+   **Verified against the real dev database**, not just tests: ran the actual CLI
+   against `data/rental_intelligence.db` (containing real v1.1 data — 8 platforms from
+   prior real runs) and confirmed it migrated in place with zero data loss. No dev-db
+   reset needed, as designed.
+4. **Code changes that rode along with the migration**: `storage/models.py`'s
+   `Platform`/`Apartment`/`ApartmentImage`/`SearchRequestRecord` dataclasses gained the
+   new fields; `discovery/platform_registry.py`, `storage/apartment_repository.py`, and
+   `storage/search_repository.py` were updated to read/write them. No business logic for
+   the 6 new tables was built — that's later steps' scope (see below).
+5. **A real bug found and fixed while testing the rollback path**: Python's `sqlite3`
+   doesn't implicitly open a transaction before DDL (`CREATE`/`ALTER`) the way it does
+   for DML, so a naive `conn.execute()`-per-statement approach inside the existing
+   `Database.transaction()` helper silently failed to roll back a failed migration's
+   earlier statements. Fixed with an explicit `BEGIN`/`COMMIT`/`ROLLBACK` transaction
+   specific to the migration runner. Full writeup in `learning/python_notes.md`. This is
+   exactly why "wrap every migration in its own transaction" was tested with a
+   deliberately-failing migration, not assumed correct from the happy path.
+
+79 tests passing (73 existing untouched + 6 new migration tests: from-v1-database,
+repeated-startup idempotency, failed-migration rollback, numeric ordering).
 
 ### Implementation Order
 
 Sequenced by dependency, not by requirement number — schema first, then whatever's
 self-contained, ending with the one piece that has an unresolved external dependency:
 
-1. **Migrations framework + v2.0 schema** (above) — everything else depends on it existing first.
+1. **Migrations framework + v2.0 schema** (above) — everything else depends on it existing first. **Done, 2026-07-14 (Sprint V2.0.1).**
 2. **Apartment History extensions** (`apartment_change_log`, `apartment_image_events`) —
    a direct, self-contained extension of the existing, working `analyzers/change_detector.py`
    and `analyzers/engine.py` write sequence. Low risk, high value, do it early.

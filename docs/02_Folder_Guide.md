@@ -69,8 +69,7 @@ src/
     __init__.py
     database.py                             # SQLite connection/session management
     schema.sql                               # DDL for all tables in 03_Data_Model.md
-    migrations/
-      0001_initial.sql
+    models.py                                 # dataclasses mirroring each table
     apartment_repository.py                   # CRUD + history writes for apartments
     search_repository.py                       # search_requests / search_results
     knowledge_repository.py                      # knowledge_entries
@@ -92,17 +91,15 @@ src/
 
 | Legacy path | Disposition | Reason |
 |---|---|---|
-| `src/browser/browser_manager.py` | Move into `src/collectors/browser_collector.py`, expanded from a test function into a reusable class | Belongs in the new Collector abstraction |
-| `src/config/config_loader.py` | Move into `src/core/config.py` | One config loader, one location |
-| `src/models/configuration.py` | Delete (duplicate of the above) | Was an accidental parallel to `config/config_loader.py` |
-| `src/model/apartment.py` | Move into `src/storage/` as the `Apartment` dataclass backing the schema in [03_Data_Model.md](03_Data_Model.md) | Data model belongs next to the repository code that persists it |
-| `src/data_source/` | Delete (empty) | Superseded by `connectors/` + `collectors/` |
-| `src/filters/` | Delete (empty) | Superseded by `search/criteria.py` |
-| `src/exporters/`, `src/reports/` | Delete (empty) | Superseded by `services/report_generator.py` |
-| `src/maps/` | Delete (empty) | Geocoding/location logic folds into `analyzers/enricher.py` for V1 — not enough scope yet for its own module |
-| `src/ai/` | Keep, empty, reserved | Not part of V1.0 scope (see Non-Goals in [00_Project_Vision.md](00_Project_Vision.md)) — reserved for V2 AI-assisted ranking explanations/report summaries so the folder doesn't need to be re-created later |
+| Legacy path | Disposition | Status |
+|---|---|---|
+| `src/browser/browser_manager.py` | Moved into `src/collectors/browser_collector.py`, expanded from a one-off test function into a reusable `BrowserCollector` context-manager class | **Done** (2026-07-14) |
+| `config/settings.json`, `src/config/config_loader.py`, `src/model/apartment.py`, `src/models/configuration.py` | Deleted, not migrated — confirmed stale/experimental by the user (2026-07-14): modeled a different, narrower concept (flatshare room search in Valencia via specific platforms) that doesn't reflect the confirmed V1.0 design. `src/storage/models.py` defines a fresh `Apartment` dataclass from [03_Data_Model.md](03_Data_Model.md) instead; `src/core/config.py` is a fresh, minimal app-config module (paths + `.env` loading), not a revival of the old per-search `Configuration` schema. See [../learning/architecture_notes.md](../learning/architecture_notes.md). | **Done** (2026-07-14) |
+| `main.py` (project root) | Deleted — only ever exercised the deleted `config_loader`/prototype code, and wasn't part of the documented structure (the real V1 entry point is `src/rental_agent.py`, see below) | **Done** (2026-07-14) |
+| `src/data_source/`, `src/filters/`, `src/exporters/`, `src/reports/`, `src/maps/` | Deleted (all were empty) — superseded by `connectors/`+`collectors/`, `search/criteria.py`, `services/report_generator.py`, and `analyzers/enricher.py` respectively | **Done** (2026-07-14) |
+| `src/ai/` | Kept, empty, reserved | Not part of V1.0 scope (confirmed 2026-07-14, see Non-Goals in [00_Project_Vision.md](00_Project_Vision.md)) — reserved for V2 AI-assisted ranking explanations/report summaries |
 
-This reconciliation is a `src/` restructuring task, not a docs task — execute it when implementation begins (see [10_Roadmap.md](10_Roadmap.md) Phase 1), not as part of this architecture pass.
+This table is a historical record of the reconciliation now that it's done — see [../learning/architecture_notes.md](../learning/architecture_notes.md) for the full reasoning behind each disposition.
 
 ## Root files
 

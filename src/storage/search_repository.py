@@ -1,0 +1,74 @@
+"""Persistence for `search_requests` and `search_results` — see docs/03_Data_Model.md
+"The Versioning Principle, Concretely" for why search_results denormalizes
+price_at_search/status_at_search instead of joining to live apartment data.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+from src.storage.models import SearchRequestRecord, SearchResultEntry, iso, parse_iso
+
+
+def insert_search_request(conn: sqlite3.Connection, request: SearchRequestRecord) -> None:
+    conn.execute(
+        "INSERT INTO search_requests (id, created_at, label, criteria_json) VALUES (?, ?, ?, ?)",
+        (request.id, iso(request.created_at), request.label, request.criteria_json),
+    )
+
+
+def get_search_request(conn: sqlite3.Connection, search_id: str) -> SearchRequestRecord | None:
+    row = conn.execute("SELECT * FROM search_requests WHERE id = ?", (search_id,)).fetchone()
+    if row is None:
+        return None
+    return SearchRequestRecord(
+        id=row["id"],
+        created_at=parse_iso(row["created_at"]),
+        label=row["label"],
+        criteria_json=row["criteria_json"],
+    )
+
+
+def add_search_result(conn: sqlite3.Connection, result: SearchResultEntry) -> int:
+    cursor = conn.execute(
+        """
+        INSERT INTO search_results (
+            search_id, apartment_id, rank, score, score_breakdown_json,
+            price_at_search, status_at_search
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            result.search_id,
+            result.apartment_id,
+            result.rank,
+            result.score,
+            result.score_breakdown_json,
+            result.price_at_search,
+            result.status_at_search,
+        ),
+    )
+    return cursor.lastrowid
+
+
+def get_search_results(conn: sqlite3.Connection, search_id: str) -> list[SearchResultEntry]:
+    """Ranked results for one search — this is what the Report Generator (docs/09_Report_System.md)
+    reads to build output/<search_id>.html, and it never changes after the fact even if the
+    underlying apartments do (that's the whole point of the snapshot columns).
+    """
+    rows = conn.execute(
+        "SELECT * FROM search_results WHERE search_id = ? ORDER BY rank",
+        (search_id,),
+    ).fetchall()
+    return [
+        SearchResultEntry(
+            id=row["id"],
+            search_id=row["search_id"],
+            apartment_id=row["apartment_id"],
+            rank=row["rank"],
+            score=row["score"],
+            score_breakdown_json=row["score_breakdown_json"],
+            price_at_search=row["price_at_search"],
+            status_at_search=row["status_at_search"],
+        )
+        for row in rows
+    ]

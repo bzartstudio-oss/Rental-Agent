@@ -15,10 +15,6 @@ A connector contains **only** platform-specific logic (URL structure, selectors/
 
 One file per platform: `<platform_id>.py`. Steps are in [../../docs/06_Connector_Framework.md](../../docs/06_Connector_Framework.md#adding-a-new-connector).
 
-## Legacy note
-
-`src/browser/browser_manager.py` and `src/data_source/` predate this structure. Per the reconciliation plan in [../../docs/02_Folder_Guide.md](../../docs/02_Folder_Guide.md), `browser_manager.py` is slated to move into `collectors/browser_collector.py` and `data_source/` is slated for deletion — check whether that move has happened yet before writing new fetch logic here.
-
 ## Status
 
 No connectors implemented yet.

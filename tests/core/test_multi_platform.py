@@ -33,9 +33,10 @@ class MultiPlatformTests(unittest.TestCase):
                 Platform(
                     id="demo_platform",
                     name="Demo Platform (reference/demo connector, not real)",
-                    base_url="local-fixture",
-                    connector_module="src.connectors.demo_platform",
-                    is_active=True,
+                    country="N/A (local fixture)",
+                    homepage="local-fixture",
+                    connector_available=True,
+                    connector_name="demo_platform",
                     created_at=datetime.now(timezone.utc),
                 ),
             )
@@ -44,9 +45,10 @@ class MultiPlatformTests(unittest.TestCase):
                 Platform(
                     id="demo_platform_two",
                     name="Demo Platform Two (reference/demo connector, not real)",
-                    base_url="local-fixture",
-                    connector_module="src.connectors.demo_platform_two",
-                    is_active=True,
+                    country="N/A (local fixture)",
+                    homepage="local-fixture-two",
+                    connector_available=True,
+                    connector_name="demo_platform_two",
                     created_at=datetime.now(timezone.utc),
                 ),
             )

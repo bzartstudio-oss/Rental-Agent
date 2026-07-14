@@ -19,10 +19,11 @@ class AnalysisEngineTests(unittest.TestCase):
 
         with self.db.transaction() as conn:
             conn.execute(
-                "INSERT INTO platforms (id, name, base_url, connector_module, is_active, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                ("test_platform", "Test", "https://example.com", "src.connectors.test", 1,
-                 datetime.now(timezone.utc).isoformat()),
+                "INSERT INTO platforms (id, name, country, supported_cities, rental_types, homepage, "
+                "connector_available, connector_name, discovery_method, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("test_platform", "Test", "Testland", "[]", "[]", "https://example.com", 1,
+                 "src.connectors.test", "manual", datetime.now(timezone.utc).isoformat()),
             )
 
     def tearDown(self) -> None:

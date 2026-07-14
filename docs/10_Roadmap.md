@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **All 7 V1.0 phases complete (2026-07-14).** The full pipeline runs end-to-end against a real (reference/demo, not commercial) connector — see the "Reference Connector Strategy" note below. Update this as priorities shift for whatever comes next (a real platform connector, most likely) — it should always reflect current reality, not the original plan.
+Status: **All 7 V1.0 phases complete, plus Version 1.1 (Multi-Platform Discovery Framework), as of 2026-07-14.** The full pipeline runs end-to-end against real reference connectors, and the platform registry now tracks 8 real-world platform candidates (2 usable, 6 catalogued for future connectors). See "Reference Connector Strategy" and "Version 1.1" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -59,9 +59,37 @@ Repo scaffolded, working agreement established, documentation structure in place
 - `connectors/demo_platform_two.py` — a genuinely different fixture shape (table/tr/td markup, different class names, `data-id` instead of `data-listing-id`) than `demo_platform.py`, specifically so parsing couldn't be copy-pasted
 - Exit criteria met: `tests/core/test_multi_platform.py` — added with zero changes to `analyzers/`, `ranking/`, `storage/`, or `services/` (verifiable directly: no commit touching this phase modifies those folders); both platforms contribute results to one search
 
+## Version 1.1 — Multi-Platform Discovery Framework (done, 2026-07-14)
+
+Explicitly *not* a real connector yet — see [05_Platform_Discovery.md](05_Platform_Discovery.md)
+for the full design. Built on top of the completed v1.0 architecture:
+
+- Extended the `platforms` table with `country`, `supported_cities`, `rental_types`,
+  `homepage`, `search_url`, `requires_login`, `connector_available`, `connector_name`,
+  `last_verified`, `discovery_method` — replacing `base_url`/`connector_module`/`is_active`.
+- `DiscoveryAgent.sync_platforms()` implements all 5 required behaviors: load existing,
+  detect duplicates (exact id or normalized homepage domain), update metadata, save new
+  platforms, mark unsupported ones (kept in the registry, not dropped — Principle 1).
+- `discovery/known_platforms.py` seeds two reference connectors (`connector_available =
+  True`) plus **6 real, well-known rental platforms across 4 countries** (Zillow,
+  Apartments.com, Rightmove, Idealista, Fotocasa, ImmoScout24) as
+  `connector_available = False` — real names/homepages, no live scraping to compile them.
+- `ui/cli.py` now calls `sync_platforms()` on every startup instead of a one-off manual
+  registration — the registry stays current automatically.
+- 17 new tests (73 total), including exercising `sync_platforms()` against the real seed
+  list. Verified with a real CLI run: 8 platforms registered, 2 available, 6 unsupported,
+  6 listings processed from the 2 available platforms.
+- Schema change meant deleting the existing dev `data/rental_intelligence.db` (no
+  migrations framework yet — see [../learning/database_notes.md](../learning/database_notes.md))
+  and letting it regenerate.
+
 ## What's Next
 
-The architecture is complete and proven end-to-end. What remains is not architectural: **pick a real first platform** (closing the open question in [../notes/Questions.md](../notes/Questions.md)) and write one connector for it, following the exact pattern `demo_platform.py`/`demo_platform_two.py` already established.
+Still not architectural: **pick a real first platform and write one connector for it**,
+following the exact pattern `demo_platform.py`/`demo_platform_two.py` already established.
+v1.1 narrows this from an open-ended question to a concrete shortlist — the 6 platforms in
+`discovery/known_platforms.py` are sitting in the registry as `connector_available = False`,
+ready for whichever one gets picked first.
 
 ## V2+ (explicitly deferred, not in V1.0)
 

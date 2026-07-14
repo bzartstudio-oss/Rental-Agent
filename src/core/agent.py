@@ -65,8 +65,11 @@ class RentalResearchAgent:
 
         apartments: list[Apartment] = []
         for platform in platforms:
+            if not platform.connector_name:
+                continue  # discover() should already filter to connector_available, but stay defensive
+
             try:
-                connector = self._load_connector(platform.connector_module)
+                connector = self._load_connector(platform.connector_name)
                 raw_listings = connector.search(request.criteria)
             except Exception:
                 continue
@@ -96,7 +99,8 @@ class RentalResearchAgent:
         return SearchRunResult(search_id=request.id, apartments=apartments, report_path=report_path)
 
     @staticmethod
-    def _load_connector(connector_module: str) -> Connector:
+    def _load_connector(connector_name: str) -> Connector:
+        connector_module = f"src.connectors.{connector_name}"
         module = importlib.import_module(connector_module)
         try:
             connector_class = module.CONNECTOR

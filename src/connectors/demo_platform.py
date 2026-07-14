@@ -68,7 +68,8 @@ class DemoPlatformConnector(Connector):
 
 
 # Convention core/agent.py relies on to dynamically load a connector from the
-# `connector_module` string stored in the platforms table — see
-# docs/06_Connector_Framework.md "Adding a New Connector": every connector module must
-# expose a module-level CONNECTOR constant pointing at its Connector subclass.
+# `connector_name` stored in the platforms table (module path built as
+# src.connectors.<connector_name>) — see docs/06_Connector_Framework.md
+# "Adding a New Connector": every connector module must expose a module-level CONNECTOR
+# constant pointing at its Connector subclass.
 CONNECTOR = DemoPlatformConnector

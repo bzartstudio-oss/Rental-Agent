@@ -33,14 +33,19 @@ class ApartmentRepositoryTests(unittest.TestCase):
         # Phase 2) — inserting the row directly here keeps this test scoped to storage only.
         with self.db.transaction() as conn:
             conn.execute(
-                "INSERT INTO platforms (id, name, base_url, connector_module, is_active, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO platforms (id, name, country, supported_cities, rental_types, homepage, "
+                "connector_available, connector_name, discovery_method, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     "test_platform",
                     "Test Platform",
+                    "Testland",
+                    "[]",
+                    "[]",
                     "https://example.com",
-                    "src.connectors.test_platform",
                     1,
+                    "src.connectors.test_platform",
+                    "manual",
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )

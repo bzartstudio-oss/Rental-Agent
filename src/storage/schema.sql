@@ -1,19 +1,30 @@
--- Rental Intelligence Platform — SQLite schema (V1.0)
+-- Rental Intelligence Platform — SQLite schema (v1.1)
 -- Design rationale for every table: docs/03_Data_Model.md
 -- This file is applied by storage/database.py on first connection (CREATE TABLE IF NOT EXISTS,
--- so it's always safe to run against an existing database).
+-- so it's always safe to run against an existing database). No migrations framework yet
+-- (docs/database_notes.md) — a schema change like the v1.1 `platforms` rework requires
+-- deleting any existing dev data/rental_intelligence.db and letting it regenerate.
 
 PRAGMA foreign_keys = ON;
 
--- The Platform Registry (docs/05_Platform_Discovery.md)
+-- The Platform Registry — managed by the Multi-Platform Discovery Framework
+-- (docs/05_Platform_Discovery.md). Records every known platform, not just ones with a
+-- working connector; connector_available distinguishes "known" from "usable."
 CREATE TABLE IF NOT EXISTS platforms (
-    id               TEXT PRIMARY KEY,
-    name             TEXT NOT NULL,
-    base_url         TEXT NOT NULL,
-    connector_module TEXT NOT NULL,
-    is_active        INTEGER NOT NULL DEFAULT 1,
-    created_at       TEXT NOT NULL,
-    notes            TEXT
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL,
+    country              TEXT NOT NULL,
+    supported_cities     TEXT NOT NULL DEFAULT '[]',  -- JSON list
+    rental_types         TEXT NOT NULL DEFAULT '[]',  -- JSON list
+    homepage             TEXT NOT NULL,
+    search_url           TEXT,
+    requires_login       INTEGER NOT NULL DEFAULT 0,
+    connector_available  INTEGER NOT NULL DEFAULT 0,
+    connector_name       TEXT,
+    last_verified        TEXT,
+    discovery_method     TEXT NOT NULL DEFAULT 'manual',
+    notes                TEXT,
+    created_at           TEXT NOT NULL
 );
 
 -- Current-state apartment records. History lives in the tables below, never here.

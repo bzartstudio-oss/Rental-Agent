@@ -34,13 +34,25 @@ def parse_iso(value: str) -> datetime:
 
 @dataclass
 class Platform:
+    """A known rental platform, managed by the Multi-Platform Discovery Framework
+    (docs/05_Platform_Discovery.md). `connector_available` distinguishes a platform this
+    system can actually search from one that's merely catalogued.
+    """
+
     id: str
     name: str
-    base_url: str
-    connector_module: str
-    is_active: bool = True
-    created_at: datetime = field(default_factory=_utcnow)
+    country: str
+    homepage: str
+    connector_available: bool = False
+    supported_cities: list[str] = field(default_factory=list)
+    rental_types: list[str] = field(default_factory=list)
+    search_url: str | None = None
+    requires_login: bool = False
+    connector_name: str | None = None
+    last_verified: datetime | None = None
+    discovery_method: str = "manual"
     notes: str | None = None
+    created_at: datetime = field(default_factory=_utcnow)
 
 
 @dataclass

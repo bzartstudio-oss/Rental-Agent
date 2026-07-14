@@ -2,7 +2,7 @@
 
 Open questions that need an answer from the user (or from research) before a decision can be made. This is a working queue, not a duplicate of the "Open Questions" sections scattered across `docs/` — when a question here gets answered, update whichever `docs/` file it blocks and remove it from this list.
 
-- Which platform/data source should the first connector target? The architecture is fully built and proven against reference connectors (`demo_platform`/`demo_platform_two`) — this is now the *only* thing standing between the current state and a genuinely working product. Blocks: writing the first real connector, see [../docs/10_Roadmap.md](../docs/10_Roadmap.md) "What's Next"
+- Which platform/data source should the first connector target? As of v1.1 (2026-07-14) there's a concrete shortlist to choose from, not an open-ended question: `discovery/known_platforms.py` has 6 real, catalogued-but-unsupported platforms (Zillow, Apartments.com, Rightmove, Idealista, Fotocasa, ImmoScout24) sitting in the registry with `connector_available = False`. Picking one and writing its connector is the only remaining step toward a working product. Blocks: writing the first real connector, see [../docs/10_Roadmap.md](../docs/10_Roadmap.md) "What's Next"
 - Exact structured shape for `SearchRequest.location`. Blocks: [../docs/04_Search_Request.md](../docs/04_Search_Request.md)
 - Exact `status` vocabulary for availability tracking (`available`/`pending`/`delisted`/...). Blocks: [../docs/03_Data_Model.md](../docs/03_Data_Model.md)
 

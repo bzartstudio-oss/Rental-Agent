@@ -8,43 +8,14 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 from src.core.agent import RentalResearchAgent
 from src.core.config import OUTPUT_DIR
-from src.discovery import platform_registry
+from src.discovery.discovery_agent import DiscoveryAgent
+from src.discovery.known_platforms import ALL_KNOWN_PLATFORMS
 from src.search.search_request import SearchRequest
 from src.storage.database import Database
-from src.storage.models import Platform
-
-# The platforms this codebase ships connectors for. No admin UI in V1
-# (docs/05_Platform_Discovery.md) — _ensure_known_platforms_registered() is that
-# registration step, run automatically so a fresh database is usable immediately.
-_KNOWN_CONNECTORS = {
-    "demo_platform": {
-        "name": "Demo Platform (reference/demo connector, not a real rental site — see connectors/demo_platform.py)",
-        "base_url": "local-fixture",
-        "connector_module": "src.connectors.demo_platform",
-    },
-}
-
-
-def _ensure_known_platforms_registered(db: Database) -> None:
-    with db.transaction() as conn:
-        for platform_id, info in _KNOWN_CONNECTORS.items():
-            if platform_registry.get_platform(conn, platform_id) is None:
-                platform_registry.register_platform(
-                    conn,
-                    Platform(
-                        id=platform_id,
-                        name=info["name"],
-                        base_url=info["base_url"],
-                        connector_module=info["connector_module"],
-                        is_active=True,
-                        created_at=datetime.now(timezone.utc),
-                    ),
-                )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -78,7 +49,7 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
     request = SearchRequest(location=args.location, criteria=criteria, label=args.label)
 
     db = db if db is not None else Database()
-    _ensure_known_platforms_registered(db)
+    DiscoveryAgent(db).sync_platforms(ALL_KNOWN_PLATFORMS)
 
     agent = RentalResearchAgent(db, output_dir=output_dir)
     result = agent.run(request)

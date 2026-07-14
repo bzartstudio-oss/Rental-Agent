@@ -34,9 +34,10 @@ class RentalResearchAgentTests(unittest.TestCase):
                 Platform(
                     id="demo_platform",
                     name="Demo Platform (reference/demo connector, not real)",
-                    base_url="local-fixture",
-                    connector_module="src.connectors.demo_platform",
-                    is_active=True,
+                    country="N/A (local fixture)",
+                    homepage="local-fixture",
+                    connector_available=True,
+                    connector_name="demo_platform",
                     created_at=datetime.now(timezone.utc),
                 ),
             )
@@ -85,9 +86,10 @@ class RentalResearchAgentTests(unittest.TestCase):
                 Platform(
                     id="broken_platform",
                     name="Broken Platform",
-                    base_url="does-not-matter",
-                    connector_module="src.connectors.does_not_exist_module",
-                    is_active=True,
+                    country="Nowhere",
+                    homepage="does-not-matter",
+                    connector_available=True,
+                    connector_name="does_not_exist_module",
                     created_at=datetime.now(timezone.utc),
                 ),
             )

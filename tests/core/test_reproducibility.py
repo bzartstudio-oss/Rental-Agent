@@ -41,9 +41,10 @@ class ReRunAndCompareTests(unittest.TestCase):
                 Platform(
                     id="demo_platform",
                     name="Demo Platform (reference/demo connector, not real)",
-                    base_url="local-fixture",
-                    connector_module="src.connectors.demo_platform",
-                    is_active=True,
+                    country="N/A (local fixture)",
+                    homepage="local-fixture",
+                    connector_available=True,
+                    connector_name="demo_platform",
                     created_at=datetime.now(timezone.utc),
                 ),
             )

@@ -14,17 +14,29 @@ Without that third part, principle 4 breaks silently: if a report from three mon
 
 ### `platforms`
 
-The Platform Registry (see [05_Platform_Discovery.md](05_Platform_Discovery.md)).
+The Platform Registry, managed by the Multi-Platform Discovery Framework (see
+[05_Platform_Discovery.md](05_Platform_Discovery.md)). As of v1.1 this table records
+**every rental platform the system knows about**, whether or not a connector exists for
+it yet — `connector_available` is what distinguishes "known" from "usable."
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | TEXT PK | Stable slug, e.g. `"example_platform"` |
+| `id` | TEXT PK | Stable slug, e.g. `"demo_platform"` — this is "platform_id" |
 | `name` | TEXT | Human-readable |
-| `base_url` | TEXT | — |
-| `connector_module` | TEXT | Python import path of the connector implementing this platform, e.g. `connectors.example_platform` |
-| `is_active` | INTEGER (bool) | Discovery Agent skips inactive platforms |
+| `country` | TEXT | — |
+| `supported_cities` | TEXT (JSON list) | e.g. `["Nationwide"]` if not verified down to specific cities |
+| `rental_types` | TEXT (JSON list) | What the platform itself covers (may be broader than this system currently processes — see [00_Project_Vision.md](00_Project_Vision.md) rental-type scope) |
+| `homepage` | TEXT | Public homepage URL |
+| `search_url` | TEXT, nullable | URL template used to build search queries, once known |
+| `requires_login` | INTEGER (bool) | Whether browsing/search requires an account |
+| `connector_available` | INTEGER (bool) | Whether a working `Connector` implementation exists for this platform — see [06_Connector_Framework.md](06_Connector_Framework.md). `False` means "known, catalogued, not yet supported" |
+| `connector_name` | TEXT, nullable | Matches a module under `connectors/` (e.g. `"demo_platform"` → `connectors.demo_platform`), null until a connector exists |
+| `last_verified` | TEXT (ISO 8601), nullable | When this platform's metadata was last confirmed accurate; null if never independently verified |
+| `discovery_method` | TEXT | How this platform entry was found — e.g. `"manual_research"`, `"manual_seed"` (V1.1); `"web_search"` reserved for future automated discovery |
+| `notes` | TEXT, nullable | Free text — auth quirks, rate limits, caveats about unverified fields, etc. |
 | `created_at` | TEXT (ISO 8601) | — |
-| `notes` | TEXT, nullable | Free text — auth quirks, rate limits, etc. |
+
+**Dropped from v1.0:** `base_url` (split into `homepage`/`search_url`, which are genuinely different things) and `is_active` (superseded by `connector_available` — a platform with no connector can't be searched regardless of any separate "active" flag, so a second boolean added no real distinction; see [05_Platform_Discovery.md](05_Platform_Discovery.md)).
 
 ### `apartments`
 

@@ -79,6 +79,21 @@ src/
     fixtures/
       demo_platform/listings.html, images/
       demo_platform_two/listings.html, images/
+    rentcast/                     # [v2.0 Step 7, live — new package] the first production
+                                    # (real, non-demo) connector — see 20_First_Production_Connector.md
+      __init__.py                   # imports connector.py -> runs @register_connector
+      connector.py                   # RentCastConnector(BaseConnector) — platform_id = "rentcast"
+      client.py                       # RentCastClient — HTTP transport, retry/backoff, auth header
+      fixtures/
+        sample_response.json            # hand-built, schema-accurate example (not a live capture)
+    sample_json_feed/             # [SDK Validation Sprint, new package] a fourth reference
+                                    # connector, JSON not HTML — see 22_SDK_Validation_Sprint.md.
+                                    # Deliberately NOT seeded in known_platforms.py — a pure SDK
+                                    # conformance/validation vehicle, not a real data source.
+      __init__.py
+      connector.py                   # SampleJsonFeedConnector(BaseConnector) — overrides _collect()
+      fixtures/
+        feed.json, images/
   collectors/
     __init__.py
     browser_collector.py           # Playwright-based fetch
@@ -186,8 +201,29 @@ src/
     cli.py                                          # entry point — the only place a human interacts with the system
   utils/
     __init__.py
-    logging.py
+    logging.py                                        # [v2.0 Step 7, live] get_logger()/StructuredFormatter —
+                                                         # first real use is rentcast/'s retry/pagination logging
     ids.py                                            # UUID generation for apartments/search_requests
+  providers/                                            # [live, new package] the Provider Abstraction Layer —
+                                                          # see 21_Provider_Abstraction_Layer.md
+    __init__.py                                            # imports data/ and ai/ -> self-registration
+    base.py                                                  # Provider (ABC), ProviderKind (DATA/AI)
+    scoring.py                                                # ProviderMetadata/ScoringWeights/ProviderScore/
+                                                                 # score_provider()
+    registry.py                                                 # ProviderRegistry, register_provider()
+    router.py                                                    # ProviderRouter, ProviderRunOutcome/ProviderAttempt
+    exceptions.py                                                 # ProviderException/NoProviderAvailableError/
+                                                                    # ProviderConfigurationError
+    data/
+      __init__.py
+      base_data_provider.py                                        # DataProvider(Provider) — platform_id, search()
+      rentcast_data_provider.py                                      # wraps RentCastConnector (v2.0 Step 7)
+      local_demo_data_provider.py                                      # wraps DemoPlatformConnector (v2.0 Step 5)
+    ai/
+      __init__.py
+      base_ai_provider.py                                            # AIProvider(Provider) — summarize()
+      ollama_ai_provider.py                                            # real HTTP to a local Ollama server
+      null_ai_provider.py                                                # always available, honest None summary
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

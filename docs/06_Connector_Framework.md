@@ -64,7 +64,7 @@ No real-platform connector exists yet. Adding one is the next real piece of work
 
 Every connector must fail gracefully — a broken platform must not crash the whole `RentalResearchAgent` run. **Resolved (2026-07-14):** `core/agent.py` catches any exception from a connector's `search()` call and skips that platform, continuing with whatever other platforms returned — see the next section, which used to be an open question here.
 
-*Still TBD: exact retry/backoff policy* — respect reasonable rate limits / robots.txt for scraped sites regardless.
+**Partially resolved (v2.0 Step 7):** no single retry/backoff policy is enforced by the SDK itself (`ConnectorConfiguration.max_retries` defaults to `0` — opt-in per connector, not a universal default), but `connectors/rentcast/client.py` establishes a concrete real-world precedent a future connector can follow: exponential backoff for transient failures (connection errors, timeouts, 5xx responses), immediate non-retried failure for anything a retry can't fix (401, and other 4xx). Still genuinely open: whether a *shared* retry helper belongs in `collectors/`/`sdk/` once a second connector needs the same policy, or whether per-connector transport policy (as RentCast has it) is the right long-term shape. Rate limits / robots.txt for scraped (non-API) sites remains unaddressed — no scraped-site connector exists yet to inform that policy.
 
 ## Resolved: Connector Failure Handling
 

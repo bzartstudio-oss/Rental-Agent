@@ -22,6 +22,7 @@ from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
 from src.knowledge import knowledge_service
 from src.knowledge import metrics as knowledge_metrics
+from src.providers import NoProviderAvailableError, ProviderKind, ProviderRegistry, ProviderRouter
 from src.ranking.ranking_engine import RankingEngine
 from src.search.search_request import SearchRequest
 from src.search_memory import search_memory_service
@@ -39,12 +40,29 @@ class SearchRunResult:
 
 
 class RentalResearchAgent:
-    def __init__(self, db: Database, output_dir: Path = OUTPUT_DIR) -> None:
+    def __init__(
+        self,
+        db: Database,
+        output_dir: Path = OUTPUT_DIR,
+        data_router: ProviderRouter | None = None,
+        ai_router: ProviderRouter | None = None,
+    ) -> None:
+        """`data_router`/`ai_router` are optional and default to `None` — every
+        existing caller (every test that doesn't pass them) gets byte-identical
+        behavior to before v2.0's Provider Abstraction Layer existed. See
+        docs/21_Provider_Abstraction_Layer.md "Integration" for what each one changes
+        when supplied: `data_router` replaces the platforms it manages (RentCast,
+        local demo) in the per-platform loop below with a single scored,
+        fallback-aware choice; `ai_router` adds an optional AI-generated summary to
+        the report. Neither touches any *other* registered platform/connector.
+        """
         self._db = db
         self._output_dir = output_dir
         self._discovery = DiscoveryAgent(db)
         self._analysis = AnalysisEngine()
         self._ranking = RankingEngine()
+        self._data_router = data_router
+        self._ai_router = ai_router
 
     def run(self, request: SearchRequest) -> SearchRunResult:
         """Runs one search to completion: persists the request, discovers relevant
@@ -103,6 +121,28 @@ class RentalResearchAgent:
         platform_metrics: list[dict] = []
 
         apartments: list[Apartment] = []
+
+        if self._data_router is not None:
+            apartments.extend(
+                self._run_data_router(
+                    self._data_router,
+                    request,
+                    platforms,
+                    searched_platform_ids,
+                    connector_versions,
+                    errors,
+                    platform_metrics,
+                )
+            )
+            # The router already covers whichever platform(s) it manages (RentCast,
+            # local demo) — excluding them here prevents querying the same platform
+            # twice. Any *other* registered platform (not managed by this router) is
+            # untouched and still runs through the normal loop below.
+            router_platform_ids = {
+                provider.platform_id for provider in ProviderRegistry.all(ProviderKind.DATA)
+            }
+            platforms = [platform for platform in platforms if platform.id not in router_platform_ids]
+
         for platform in platforms:
             if not platform.connector_name:
                 continue  # discover() should already filter to connector_available, but stay defensive
@@ -164,6 +204,14 @@ class RentalResearchAgent:
 
         ranked = self._ranking.rank(apartments, request)
 
+        ai_summary: str | None = None
+        if self._ai_router is not None:
+            try:
+                ai_outcome = self._ai_router.run_with_fallback(lambda provider: provider.summarize(ranked, request))
+                ai_summary = ai_outcome.result
+            except NoProviderAvailableError as exc:
+                errors.append(f"ai_provider_router: {exc}")
+
         with self._db.transaction() as conn:
             for entry in ranked:
                 search_repository.add_search_result(
@@ -180,7 +228,11 @@ class RentalResearchAgent:
                 )
 
         report_path = generate_report(
-            self._db, request.id, output_dir=self._output_dir, analysis_results=analysis_results
+            self._db,
+            request.id,
+            output_dir=self._output_dir,
+            analysis_results=analysis_results,
+            ai_summary=ai_summary,
         )
         execution_time_ms = int((time.perf_counter() - started_at) * 1000)
 
@@ -218,3 +270,83 @@ class RentalResearchAgent:
                 )
 
         return SearchRunResult(search_id=request.id, apartments=apartments, report_path=report_path)
+
+    def _run_data_router(
+        self,
+        data_router: ProviderRouter,
+        request: SearchRequest,
+        discovered_platforms: list,
+        searched_platform_ids: list[str],
+        connector_versions: dict[str, str | None],
+        errors: list[str],
+        platform_metrics: list[dict],
+    ) -> list[Apartment]:
+        """Runs `data_router.run_with_fallback()` once and records exactly the same
+        bookkeeping (`searched_platform_ids`/`connector_versions`/`platform_metrics`/
+        `errors`) a normal per-platform loop iteration would — attributed to the
+        resolved provider's real `platform_id` — so Search Memory/Knowledge Engine
+        can't tell the difference between a router-selected platform and a directly-
+        queried one. See docs/21_Provider_Abstraction_Layer.md "Integration".
+        """
+        try:
+            outcome = data_router.run_with_fallback(
+                lambda provider: provider.search(request),
+                is_success=lambda result: result.success,
+            )
+        except NoProviderAvailableError as exc:
+            errors.append(f"data_provider_router: {exc}")
+            platform_metrics.append(
+                {
+                    "platform_id": "data_provider_router",
+                    "results_count": 0,
+                    "failed": True,
+                    "response_time_ms": None,
+                    "raw_listings": None,
+                    "parsing_success": False,
+                }
+            )
+            return []
+
+        provider = ProviderRegistry.get(outcome.provider_id)
+        platform_id = provider.platform_id
+        result = outcome.result
+
+        registered = next((p for p in discovered_platforms if p.id == platform_id), None)
+        if registered is None:
+            # The router resolved a real, available data provider, but its underlying
+            # platform has no row in `platforms` yet (e.g. discovery sync never ran) —
+            # `apartments.platform_id` has a real foreign key to `platforms(id)`, so
+            # writing listings now would fail with an integrity error, not a graceful
+            # ConnectorResult failure. Reported the same honest way any other
+            # misconfiguration is: an error entry, zero apartments, never a crash.
+            errors.append(
+                f"data_provider_router: resolved platform {platform_id!r} is not registered "
+                "in `platforms` — run platform discovery sync first"
+            )
+            platform_metrics.append(
+                {
+                    "platform_id": platform_id,
+                    "results_count": 0,
+                    "failed": True,
+                    "response_time_ms": result.response_time_ms,
+                    "raw_listings": None,
+                    "parsing_success": False,
+                }
+            )
+            return []
+
+        searched_platform_ids.append(platform_id)
+        connector_versions[platform_id] = registered.connector_version
+        platform_metrics.append(
+            {
+                "platform_id": platform_id,
+                "results_count": result.results_count,
+                "failed": False,
+                "response_time_ms": result.response_time_ms,
+                "raw_listings": result.listings,
+                "parsing_success": True,
+            }
+        )
+
+        with self._db.transaction() as conn:
+            return process_listings(conn, result.listings, platform_id, request.id)

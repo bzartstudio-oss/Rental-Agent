@@ -39,3 +39,11 @@ class RawListing:
     # real, honest "no description available" rather than a missing-field bug. See
     # docs/03_Data_Model.md `apartments.description` and docs/07_Analysis_Engine.md.
     description: str | None = None
+    # v2.0 Step 7 (migration 0004) — no reference connector had real coordinates,
+    # currency, or property type; the first production connector (RentCast) does. See
+    # docs/20_First_Production_Connector.md. All None is a real "not provided," never
+    # a guessed default.
+    latitude: float | None = None
+    longitude: float | None = None
+    currency: str | None = None
+    property_type: str | None = None

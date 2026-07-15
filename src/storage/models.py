@@ -85,6 +85,10 @@ class Apartment:
     # v2.0 (migration 0001) — required before its changes can be tracked in
     # apartment_change_log; not yet populated by normalizer.py (docs/07_Analysis_Engine.md).
     description: str | None = None
+    # v2.0 Step 7 (migration 0004) — no reference connector had real data for these;
+    # the first production connector (RentCast) does. See docs/20_First_Production_Connector.md.
+    currency: str | None = None
+    property_type: str | None = None
 
 
 @dataclass

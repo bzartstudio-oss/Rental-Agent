@@ -33,8 +33,8 @@ def insert_apartment(conn: sqlite3.Connection, apartment: Apartment) -> None:
             id, platform_id, platform_listing_id, title, bedrooms, bathrooms, sqft,
             address_raw, address_normalized, latitude, longitude, url,
             current_price, current_status, first_seen_at, last_seen_at, merged_into_id,
-            description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            description, currency, property_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             apartment.id,
@@ -57,6 +57,9 @@ def insert_apartment(conn: sqlite3.Connection, apartment: Apartment) -> None:
             # v2.0 (migration 0001) — not yet populated by normalizer.py (that's a Step 2
             # / Apartment History change, not this sprint's), so always None for now.
             apartment.description,
+            # v2.0 Step 7 (migration 0004) — see docs/20_First_Production_Connector.md.
+            apartment.currency,
+            apartment.property_type,
         ),
     )
 
@@ -133,6 +136,8 @@ def _row_to_apartment(row: sqlite3.Row) -> Apartment:
         last_seen_at=parse_iso(row["last_seen_at"]),
         merged_into_id=row["merged_into_id"],
         description=row["description"],
+        currency=row["currency"],
+        property_type=row["property_type"],
     )
 
 

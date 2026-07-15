@@ -14,6 +14,7 @@ from src.core.agent import RentalResearchAgent
 from src.core.config import OUTPUT_DIR
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.discovery.known_platforms import ALL_KNOWN_PLATFORMS
+from src.providers import ProviderKind, ProviderRouter
 from src.search.search_request import SearchRequest
 from src.storage.database import Database
 
@@ -26,6 +27,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-bathrooms", type=float, default=None)
     parser.add_argument("--min-sqft", type=float, default=None)
     parser.add_argument("--label", default=None, help="Optional name for this search")
+    parser.add_argument(
+        "--use-provider-router",
+        action="store_true",
+        help=(
+            "Route data (RentCast / local demo) and AI (Ollama / no-op) selection "
+            "through the Provider Abstraction Layer instead of querying every "
+            "registered platform directly — see docs/21_Provider_Abstraction_Layer.md. "
+            "Off by default; the default flow is unchanged."
+        ),
+    )
     return parser
 
 
@@ -51,7 +62,10 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
     db = db if db is not None else Database()
     DiscoveryAgent(db).sync_platforms(ALL_KNOWN_PLATFORMS)
 
-    agent = RentalResearchAgent(db, output_dir=output_dir)
+    data_router = ProviderRouter(ProviderKind.DATA) if args.use_provider_router else None
+    ai_router = ProviderRouter(ProviderKind.AI) if args.use_provider_router else None
+
+    agent = RentalResearchAgent(db, output_dir=output_dir, data_router=data_router, ai_router=ai_router)
     result = agent.run(request)
 
     print(f"Search {result.search_id}: {len(result.apartments)} listing(s) processed.")

@@ -27,4 +27,11 @@ def normalize(raw: RawListing) -> dict:
         "address_raw": raw.address_raw.strip() if raw.address_raw else None,
         # v2.0 — required to exist before its changes can be tracked (docs/03_Data_Model.md).
         "description": raw.description.strip() if raw.description else None,
+        # v2.0 Step 7 (migration 0004) — no reference connector had real values for
+        # these; the first production connector (RentCast) does. See
+        # docs/20_First_Production_Connector.md.
+        "latitude": raw.latitude,
+        "longitude": raw.longitude,
+        "currency": raw.currency.strip() if raw.currency else None,
+        "property_type": raw.property_type.strip() if raw.property_type else None,
     }

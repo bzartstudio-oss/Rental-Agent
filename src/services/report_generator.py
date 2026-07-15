@@ -15,6 +15,20 @@ nothing to say, while a report regenerated later without fresh results (not curr
 a real feature — `report_path` is written once per search) simply omits the section.
 Every existing caller that doesn't pass this argument gets byte-identical behavior to
 before this sprint.
+
+Provider Abstraction Layer — `ai_summary` is another optional, in-memory-only
+parameter, the same shape as `analysis_results`: an AI provider's summary
+(`src/providers/ai/`) is never persisted either, so it can only appear in a report
+generated in the same run that computed it. `None` (the default, and what every
+existing caller still gets) renders no summary section at all — never a placeholder.
+
+SDK Validation Sprint (docs/22_SDK_Validation_Sprint.md) — a genuine, previously
+unnoticed gap: `Apartment` already carries `platform_id`, `platform_listing_id`,
+`currency`, `property_type`, `latitude`/`longitude`, and `last_seen_at` (all populated
+by connectors, some since v2.0's first migration), but this generator never rendered
+any of them. Platform *name* (not just id) comes from a `platform_registry.get_platform()`
+lookup per listing — cheap at typical result-set sizes, and the same read-only pattern
+`apartment_repository.get_*` calls already use inside this same transaction.
 """
 
 from __future__ import annotations
@@ -26,6 +40,7 @@ from pathlib import Path
 
 from src.analysis.models import AnalysisResult
 from src.core.config import OUTPUT_DIR
+from src.discovery import platform_registry
 from src.storage import apartment_repository, search_repository
 from src.storage.database import Database
 
@@ -35,6 +50,7 @@ def generate_report(
     search_id: str,
     output_dir: Path = OUTPUT_DIR,
     analysis_results: dict[str, AnalysisResult] | None = None,
+    ai_summary: str | None = None,
 ) -> Path:
     analysis_results = analysis_results or {}
 
@@ -45,21 +61,22 @@ def generate_report(
         rows_html = []
         for result in results:
             apartment = apartment_repository.get_apartment(conn, result.apartment_id)
+            platform = platform_registry.get_platform(conn, apartment.platform_id)
             images = apartment_repository.get_images(conn, result.apartment_id)
             price_history = apartment_repository.get_price_history(conn, result.apartment_id)
             availability_history = apartment_repository.get_availability_history(conn, result.apartment_id)
             analysis = analysis_results.get(result.apartment_id)
             rows_html.append(
-                _render_result(result, apartment, images, price_history, availability_history, analysis)
+                _render_result(result, apartment, platform, images, price_history, availability_history, analysis)
             )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / f"{search_id}.html"
-    report_path.write_text(_render_page(search, rows_html), encoding="utf-8")
+    report_path.write_text(_render_page(search, rows_html, ai_summary), encoding="utf-8")
     return report_path
 
 
-def _render_page(search, rows_html: list[str]) -> str:
+def _render_page(search, rows_html: list[str], ai_summary: str | None = None) -> str:
     criteria = json.loads(search.criteria_json) if search else {}
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -81,6 +98,7 @@ def _render_page(search, rows_html: list[str]) -> str:
   .analysis {{ margin-top: 0.5rem; }}
   .analysis-detail {{ font-size: 0.8rem; color: #444; margin: 0.25rem 0 0; padding-left: 1.2rem; }}
   .analysis-warning {{ color: #a15c00; }}
+  .ai-summary {{ background: #f2f6fb; border: 1px solid #cddcec; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.95rem; }}
   a {{ color: #0055aa; }}
 </style>
 </head>
@@ -92,13 +110,24 @@ def _render_page(search, rows_html: list[str]) -> str:
   Criteria: {escape(json.dumps(criteria.get('criteria', {})))}<br>
   Generated: {escape(datetime.now(timezone.utc).isoformat())}
 </div>
+{_render_ai_summary(ai_summary)}
 {''.join(rows_html) if rows_html else '<p>No matching listings.</p>'}
 </body>
 </html>
 """
 
 
-def _render_result(result, apartment, images, price_history, availability_history, analysis: AnalysisResult | None) -> str:
+def _render_ai_summary(ai_summary: str | None) -> str:
+    """Omitted entirely when no AI provider produced a summary (`None`) — never a
+    placeholder like "AI summary unavailable," matching the same honesty convention
+    `_render_analysis()` already follows for missing analyzer evidence.
+    """
+    if not ai_summary:
+        return ""
+    return f'<div class="ai-summary"><strong>AI Summary:</strong> {escape(ai_summary)}</div>'
+
+
+def _render_result(result, apartment, platform, images, price_history, availability_history, analysis: AnalysisResult | None) -> str:
     photos_html = "".join(
         f'<img src="{escape(Path(image.local_path).as_uri())}" alt="listing photo">' for image in images
     )
@@ -106,12 +135,22 @@ def _render_result(result, apartment, images, price_history, availability_histor
     price_trend = " → ".join(f"{entry.price:.0f}" for entry in price_history)
     status_trend = " → ".join(escape(entry.status) for entry in availability_history)
 
+    platform_name = platform.name if platform is not None else apartment.platform_id
+    coordinates_text = (
+        f"{apartment.latitude:.5f}, {apartment.longitude:.5f}"
+        if apartment.latitude is not None and apartment.longitude is not None
+        else "n/a"
+    )
+
     return f"""<div class="listing">
   <span class="rank">#{result.rank}</span>
   <h2>{escape(apartment.title)}</h2>
   <div class="price">${result.price_at_search:.0f}/mo — {escape(result.status_at_search)}</div>
   <div class="facts">{apartment.bedrooms or '?'} bed · {apartment.bathrooms or '?'} bath · {apartment.sqft or '?'} sqft · {escape(apartment.address_raw or '')}</div>
   <div class="facts">Score: {result.score:.2f} <span class="score-breakdown">({breakdown_html})</span></div>
+  <div class="facts">Platform: {escape(platform_name)} &nbsp;|&nbsp; Listing ID: {escape(apartment.platform_listing_id)} &nbsp;|&nbsp; Property type: {escape(apartment.property_type or 'n/a')} &nbsp;|&nbsp; Currency: {escape(apartment.currency or 'n/a')}</div>
+  <div class="facts">Coordinates: {coordinates_text} &nbsp;|&nbsp; Last updated: {escape(apartment.last_seen_at.isoformat())}</div>
+  {f'<div class="facts">{escape(apartment.description)}</div>' if apartment.description else ''}
   <div class="photos">{photos_html}</div>
   <div class="history">Price history: {price_trend or 'n/a'} &nbsp;|&nbsp; Availability history: {status_trend or 'n/a'}</div>
   {_render_analysis(analysis)}

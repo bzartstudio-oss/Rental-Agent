@@ -1,10 +1,12 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–6 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), and the Deep Analysis Engine (Step 6, 314 tests passing). **Step 6 was built ahead of Step 7** (Dynamic Filter Engine) at explicit instruction, swapping the original plan's order — the numbered list below now reflects the order things actually happened in, not the original sequencing; see that step's entry for the reasoning. Step 7 remains designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward — see its own section below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
 No real rental platform had been chosen when Phases 3–7 were built (the "which platform first" question in [../notes/Questions.md](../notes/Questions.md) was still open). Rather than block architecture completion on that product decision, or unilaterally pick a real commercial site to scrape without confirming its ToS, every phase from here on was proven against **`demo_platform`** and **`demo_platform_two`** — real `Connector` implementations that fetch real local HTML fixtures via a real Playwright browser and parse them with BeautifulSoup, exactly like a connector for a live site would, but touching no external service. This is explicitly not a shortcut around the exit criteria — every fetch, parse, database write, and report generation described below is real; only the *source* is a controlled fixture instead of a commercial website. Swapping in a real platform means writing one more connector implementing the same contract (see [06_Connector_Framework.md](06_Connector_Framework.md)) — nothing else changes, which Phase 7 exists specifically to demonstrate.
+
+**Resolved in v2.0 Step 7 (2026-07-15): RentCast.** See [20_First_Production_Connector.md](20_First_Production_Connector.md) for the full write-up — a real, developer-facing REST API verified (not assumed) to have self-service auth, a free tier, and Terms of Use permitting this kind of programmatic access, chosen over the 6 previously-catalogued platforms (Zillow, Apartments.com, Rightmove, Idealista, Fotocasa, ImmoScout24), none of which offer a comparable self-service path and all of which prohibit scraping. `demo_platform`/`demo_platform_two` remain in place as the reference fixtures every future connector is still developed and certified against before touching a live source.
 
 ## Why This Order
 
@@ -167,9 +169,13 @@ self-contained, ending with the one piece that has an unresolved external depend
    originally sketched (price/status keep using `change_detector.py` unchanged);
    `compare_coordinates` and `compare_presence` ("listing removed"/"listing returned")
    are implemented and unit-tested but not wired into the pipeline, since nothing
-   populates coordinates yet (Step 7) and "removed" requires Search Memory's
-   full-observed-set comparison (Step 3) to mean what the mission intends rather than
-   "excluded by this run's filters." Full writeup in `learning/architecture_notes.md`.
+   populated coordinates at the time (the "Step 7" this note originally meant was the
+   Dynamic Filter Engine slot, before that number was reassigned — see Step 7's actual
+   entry above; RentCast now does populate coordinates, but wiring `compare_coordinates`
+   into the pipeline itself remains undone, out of scope for that connector sprint) and
+   "removed" requires Search Memory's full-observed-set comparison (Step 3) to mean
+   what the mission intends rather than "excluded by this run's filters." Full writeup
+   in `learning/architecture_notes.md`.
 3. **Search Memory** (`search_observed_apartments`, `search_requests` run-stats columns,
    run-over-run comparison) — needed before Knowledge Engine, since Knowledge Engine
    observations are keyed by `search_id` and conceptually "when did this search finish."
@@ -347,7 +353,49 @@ self-contained, ending with the one piece that has an unresolved external depend
    (clearly fictional demo data, same convention as `demo_platform`'s own fixtures) and
    ran again, confirming real, correctly-computed analyzer and composite scores flowed
    all the way through to the generated HTML report.
-7. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–6;
+7. **First Production Connector — RentCast** (`connectors/rentcast/`) — originally the
+   subject of "After v2.0: Still the Same Answer" below (deferred to *after* Version
+   2.0 entirely); **reassigned to Step 7 at explicit instruction instead (done,
+   2026-07-15)**. Validates the Connector SDK (Step 5) against one real, external data
+   source rather than the two local fixtures it had only ever been proven against.
+   Chosen source: RentCast (see "Reference Connector Strategy" above) — a real
+   developer-facing REST API, `X-Api-Key` auth, a free tier, verified (not assumed)
+   published Terms of Use permitting this kind of programmatic access. New
+   `src/connectors/rentcast/` package: `connector.py` (`RentCastConnector`, overriding
+   `connect()`/`fetch_listing()` for API-key auth and paginated HTTP calls, implementing
+   `build_url`/`parse`/`normalize`/`connector_info` like every connector) and
+   `client.py` (`RentCastClient` — retry/backoff transport, immediate non-retried
+   failure on 401). New `src/utils/logging.py` (`get_logger`/`StructuredFormatter`) —
+   the first real use of `logging` anywhere in this codebase. New migration
+   `0004_production_connector_fields.sql` adds `apartments.currency`/`.property_type`
+   (nullable; `0001`–`0003` untouched); `RawListing`/`Apartment`/`normalizer.py`/
+   `apartment_repository.py` all gained the same two fields, plus `RawListing` gained
+   `latitude`/`longitude` (already on `Apartment` since migration 0001, but never
+   populated by any connector until now). Registered in
+   `discovery/known_platforms.py`'s `REFERENCE_CONNECTORS` exactly like the two demo
+   connectors — zero RentCast-specific code anywhere in `core/agent.py` or any
+   downstream module (proven by `tests/core/test_rentcast_integration.py`).
+
+   Also fixed along the way: a real, pre-existing bug in `BaseConnector.search()`
+   (Step 5) — `connect()` was called *outside* the `try:` block, invisible until
+   `RentCastConnector.connect()` became the first `connect()` override that
+   legitimately needs to raise. See [20_First_Production_Connector.md](20_First_Production_Connector.md)
+   "A Fix Along the Way."
+
+   47 new tests (361 total: 314 existing untouched + 47 new — `RentCastClient`
+   retry/backoff/auth-failure unit tests, `RentCastConnector` unit tests including
+   malformed/sparse/missing-coordinate listings, full `search()`-level failure tests,
+   SDK certification via the existing `ConnectorCertificationMixin`, and one
+   full-pipeline integration test). All new tests mock the HTTP layer — no test makes a
+   real network call or spends real RentCast free-tier quota. One real, live search was
+   additionally run against the actual RentCast API (a real key supplied transiently,
+   never logged or committed) to satisfy this step's live-verification requirement.
+
+   Full write-up: [20_First_Production_Connector.md](20_First_Production_Connector.md)
+   (numbered `20`, not the mission's requested `19` — already taken by
+   [19_Analysis_Engine.md](19_Analysis_Engine.md), the same collision Steps 5/6 each
+   hit and resolved the same way).
+8. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–6;
    migrate the 5 existing filters first (behavior-preserving refactor), then add one or
    two real filters per new category as *examples* of the pattern working, not all ~25
    at once — the framework, not the exhaustive filter list, is what v2.0 is scoped to.
@@ -359,11 +407,54 @@ run the full suite, commit — the same discipline every phase so far has follow
 
 ### After v2.0: Still the Same Answer
 
-Once the above is built, the next real product step is unchanged from before this
-upgrade: **pick a real first platform and write one connector for it** (now using the
-Connector SDK from step 5), following the pattern `demo_platform.py`/`demo_platform_two.py`
-already established. The 6 candidates in `discovery/known_platforms.py` are still
-sitting ready, `connector_available = False`, in [notes/Questions.md](../notes/Questions.md).
+~~Once the above is built, the next real product step is unchanged from before this
+upgrade: pick a real first platform and write one connector for it (now using the
+Connector SDK from step 5)~~ — **resolved, and pulled forward into Version 2.0 itself
+as Step 7** (RentCast, done 2026-07-15; see that step's entry above and
+[20_First_Production_Connector.md](20_First_Production_Connector.md)), at explicit
+instruction rather than waiting for Version 2.0 to fully complete first. The 6 originally-catalogued
+candidates in `discovery/known_platforms.py` (Zillow, Apartments.com, Rightmove,
+Idealista, Fotocasa, ImmoScout24) remain `connector_available = False` — none offers a
+comparable self-service, ToS-compliant path — and stay available as future candidates
+if a second real connector is ever wanted, following the checklist in
+[20_First_Production_Connector.md](20_First_Production_Connector.md) "How to Add the
+Next Connector."
+
+## Provider Abstraction Layer (done, 2026-07-15 — not a numbered Version 2.0 step)
+
+Requested separately, after Step 7, rather than as another numbered item in the
+Implementation Order above — a distinct capability, not a continuation of any
+already-planned step. Adds `src/providers/` (see
+[21_Provider_Abstraction_Layer.md](21_Provider_Abstraction_Layer.md)): a common
+`Provider` interface for both data providers (RentCast, local demo) and AI providers
+(a local Ollama LLM, an always-available no-op), a scoring router
+(`ProviderRouter`) selecting the best *available* candidate by cost/freshness/
+quality, and a real fallback mechanism — a failing or unavailable provider is skipped
+in favor of the next-best one, in the same run, not just at startup.
+
+`RentalResearchAgent` gained two new, optional, default-`None` constructor parameters
+(`data_router`, `ai_router`) — every existing caller is byte-identical to before this
+addition. `ui/cli.py` gained one new, off-by-default flag (`--use-provider-router`).
+52 new tests (413 total: 361 existing untouched + 52 new). Works with zero
+configuration by design: no `RENTCAST_API_KEY` and no local Ollama running still
+produces a complete search and report, via `LocalDemoDataProvider`/`NullAIProvider`.
+
+## SDK Validation Sprint (done, 2026-07-15 — verification, not new functionality)
+
+Requested after the Provider Abstraction Layer, to empirically check four specific
+claims the Connector SDK (Step 5) has made since it was built, rather than just
+re-asserting them: can a second connector be added with zero changes elsewhere; does
+the factory discover it automatically; are connectors truly independent; is the
+normalized model complete enough. A fourth reference connector,
+`SampleJsonFeedConnector` (`src/connectors/sample_json_feed/`) — JSON, not HTML,
+deliberately not seeded in `known_platforms.py` — was added purely as the controlled
+experiment. All four claims held, with two genuine, honestly-reported gaps in the
+normalized model (no `room_type` field; no field for a platform's own "last updated"
+fact, distinct from this system's observation timestamps) and one gap found and fixed
+(several already-modeled fields — currency, property type, coordinates, platform
+name, listing id, description — weren't being rendered in the HTML report; now they
+are). 15 new tests (428 total). Full write-up:
+[22_SDK_Validation_Sprint.md](22_SDK_Validation_Sprint.md).
 
 ## Beyond Version 2.0 (explicitly deferred)
 

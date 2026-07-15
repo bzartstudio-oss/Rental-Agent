@@ -4,11 +4,146 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.10] — 2026-07-15 — SDK Validation Sprint
+
+A verification exercise, not new functionality: checks four specific claims about the
+Connector SDK (2.0.6) empirically.
+
+### Added
+- `src/connectors/sample_json_feed/` — a fourth reference connector (JSON, not HTML),
+  built purely as a controlled experiment for this sprint. Deliberately not seeded in
+  `discovery/known_platforms.py`.
+- `tests/connectors/test_sample_json_feed.py` — includes `AutoDiscoveryTests`, which
+  forcibly evicts the connector from the registry to prove factory auto-discovery
+  goes `False` → `True` around one `ConnectorFactory.get()` call.
+- `docs/22_SDK_Validation_Sprint.md` — full findings for all four questions.
+- 15 new tests (428 total).
+
+### Changed
+- `services/report_generator.py` now renders platform name, listing identifier,
+  property type, currency, coordinates, and last-observed timestamp per listing —
+  fields `Apartment` already carried but the report never surfaced (a real gap found
+  while answering "is the normalized model complete enough").
+
+### Findings (honestly reported, not all fixed)
+- **Confirmed**: a second (third, fourth) connector can be added with zero changes to
+  any existing file; the factory discovers it automatically by naming convention;
+  connectors are genuinely independent (import audit, standalone test runs, no shared
+  mutable state beyond an additive registry).
+- **Real gap, left open**: no `room_type` field exists in `RawListing`/`Apartment`,
+  despite being requested by the v2.0 Step 7 mission — connects to the already-known,
+  deliberately deferred room/flatshare product-scope question.
+- **Real gap, left open**: no field carries a platform's own "last updated" fact,
+  distinct from this system's own observation timestamps.
+
+## [2.0.9] — 2026-07-15 — Provider Abstraction Layer
+
+Not a numbered Version 2.0 implementation step — a separate, orthogonal capability
+requested after Step 7, sitting on top of the Connector SDK (2.0.6) and RentCast
+(2.0.8) rather than continuing either one's own scope.
+
+### Added
+- `src/providers/` — a common `Provider` interface (`is_available()`, `metadata()`)
+  with two kinds: `DataProvider` (adds `platform_id`, `search()`) and `AIProvider`
+  (adds `summarize()`).
+- `ProviderRegistry` — eager self-registration (`register_provider(instance)`),
+  mirroring the Analysis Engine's registry pattern.
+- `scoring.py` — pure `score_provider()`: availability (hard gate, not just a
+  weighted term), cost, freshness, quality combined into one score; weights are
+  configurable data (`ScoringWeights`), never hardcoded.
+- `ProviderRouter.run_with_fallback()` — ranks available candidates best-first, tries
+  each until one succeeds (or its result reports failure), logs the full ranking and
+  every attempt's outcome, raises `NoProviderAvailableError` only once every
+  candidate has failed.
+- Four built-in providers: `RentCastDataProvider`/`LocalDemoDataProvider` (thin
+  adapters over `ConnectorFactory` — no fetching/parsing logic duplicated),
+  `OllamaAIProvider` (real HTTP to a local Ollama server for summarization),
+  `NullAIProvider` (always available, honestly returns `None`, never a fabricated
+  summary).
+- `docs/21_Provider_Abstraction_Layer.md`.
+- 52 new tests (413 total): pure scoring/registry tests, router fallback tests using
+  scripted fake providers, per-provider unit tests with transport mocked, and a full
+  agent-level integration test (no API key → local demo; RentCast configured and
+  working → preferred; RentCast failing mid-run → falls back to local demo in the
+  same run; AI summary appears/omits/falls back correctly; default no-router
+  behavior unaffected).
+
+### Changed
+- `RentalResearchAgent.__init__` gained two new, optional, default-`None`
+  parameters: `data_router`, `ai_router`. Every existing caller is unaffected.
+- `services/report_generator.py::generate_report()` gained one new, optional,
+  default-`None` parameter: `ai_summary`. `None` renders no summary section.
+- `ui/cli.py` gained one new, off-by-default flag: `--use-provider-router`.
+
+### Works with zero configuration
+- No `RENTCAST_API_KEY` and no local Ollama running still produces a complete
+  search and report — `LocalDemoDataProvider`/`NullAIProvider` are always available,
+  by design.
+
+## [2.0.8] — 2026-07-15 — First Production Connector (RentCast)
+
+Built as Step 7 — reassigned a second time, this time pulling forward the item
+"After v2.0: Still the Same Answer" (`docs/10_Roadmap.md`) had deferred to after
+Version 2.0 entirely: pick a real first platform and prove the Connector SDK (Step 5)
+against it, not just the two local fixtures it had only ever been tested with. Dynamic
+Filter Engine (previously Step 7) is pushed to Step 8.
+
+### Added
+- `src/connectors/rentcast/` — the first production (real, non-demo) connector:
+  `connector.py` (`RentCastConnector`) and `client.py` (`RentCastClient`, retry/backoff
+  HTTP transport).
+- `src/utils/logging.py` — `get_logger()`/`StructuredFormatter`, the first real use of
+  `logging` in this codebase.
+- Migration `0004_production_connector_fields.sql` — adds `apartments.currency`/
+  `.property_type` (both nullable). `0001`–`0003` untouched.
+- `RawListing`/`Apartment`/`normalizer.py`/`apartment_repository.py` gained matching
+  `currency`/`property_type` fields; `RawListing` also gained `latitude`/`longitude`
+  (already on `Apartment` since migration 0001, never populated by any connector until
+  now).
+- `discovery/known_platforms.py` — RentCast added to `REFERENCE_CONNECTORS`
+  (`connector_available=True`, `connector_name="rentcast"`).
+- `docs/20_First_Production_Connector.md` — why RentCast, the field-mapping table,
+  retry/pagination policy, limitations, and how to add the next connector. (The
+  mission asked for `docs/19_...`; `19` was already taken by the Analysis Engine —
+  used the next free number.)
+- 47 new tests (361 total): `RentCastClient` retry/backoff/auth-failure tests,
+  `RentCastConnector` normalize/parse/pagination/failure tests, full `search()`-level
+  failure tests (malformed listing, missing images, missing coordinates, empty
+  results, network timeout, missing API key — every one a normal failed
+  `ConnectorResult`, never a raised exception), SDK certification via the existing
+  `ConnectorCertificationMixin`, and a full-pipeline integration test. All HTTP calls
+  mocked — no test spends real RentCast free-tier quota.
+
+### Fixed
+- `BaseConnector.search()` (Step 5): `connect()` was called *outside* its `try:`
+  block — invisible until `RentCastConnector.connect()` became the first override that
+  legitimately raises (`ConnectorConfigurationError` on a missing API key). Moved
+  inside the guard; zero behavior change for connectors whose `connect()` never
+  raises.
+
+### Why RentCast
+- A real, developer-facing REST API (`api.rentcast.io/v1`), not a scraped website —
+  self-service `X-Api-Key` auth, a free tier (50 requests/month), and published Terms
+  of Use permitting this kind of programmatic access, verified by live lookup before
+  writing any connector code. Chosen over the 6 previously-catalogued platforms
+  (Zillow, Apartments.com, Rightmove, Idealista, Fotocasa, ImmoScout24), none of which
+  offer a comparable path and all of which prohibit scraping — all 6 remain
+  `connector_available=False`.
+- No authentication bypassed, no anti-bot/CAPTCHA protection circumvented.
+
+### Known limitations (never fabricated, honestly reported)
+- No photos/images field in RentCast's schema — `image_urls` is always `[]`.
+- No description field — always `None`.
+- No browsable listing page — `url` points at RentCast's own per-listing API record,
+  documented as such, not a page a person could open in a browser.
+- US-only coverage; free-tier quota (50 requests/month) bounds pagination to a
+  conservative 100/page × 3 pages.
+
 ## [2.0.7] — 2026-07-15 — Deep Analysis Engine
 
 Built as Step 6 (ahead of the Dynamic Filter Engine, originally planned as Step 6, now
-Step 7) at explicit instruction — `docs/10_Roadmap.md` updated to reflect the actual
-build order.
+Step 8 — see [2.0.8]) at explicit instruction — `docs/10_Roadmap.md` updated to reflect
+the actual build order.
 
 ### Added
 - `src/analysis/` — a self-registering analyzer plugin framework: `BaseAnalyzer`
@@ -60,7 +195,7 @@ build order.
   predictive inference anywhere — every score is deterministic arithmetic or a direct
   function of a curated fact.
 - No wiring into `search/criteria.py` or `ranking/` — that's the Dynamic Filter
-  Engine's job (Step 7, not yet built); this sprint only makes the metrics exist.
+  Engine's job (now Step 8, not yet built); this sprint only makes the metrics exist.
 
 ## [2.0.6] — 2026-07-15 — Connector SDK & Plugin Framework
 

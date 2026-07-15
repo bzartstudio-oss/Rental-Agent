@@ -67,6 +67,7 @@ class BackwardCompatibilityTests(ReportGeneratorTestCase):
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("A Nice Place", content)
         self.assertNotIn('class="analysis"', content)  # no section when nothing passed
+        self.assertNotIn('class="ai-summary"', content)  # no section when nothing passed
 
 
 class AnalysisSectionTests(ReportGeneratorTestCase):
@@ -122,6 +123,86 @@ class AnalysisSectionTests(ReportGeneratorTestCase):
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("A Nice Place", content)
         self.assertNotIn('class="analysis"', content)
+
+
+class EnrichedMetadataSectionTests(ReportGeneratorTestCase):
+    """SDK Validation Sprint finding: Apartment already carries platform identity,
+    currency, property type, coordinates, and a last-observed timestamp — this section
+    proves the report actually surfaces them, closing that gap (see
+    docs/22_SDK_Validation_Sprint.md "Question 4").
+    """
+
+    def test_platform_name_and_listing_id_are_shown(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir)
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn("Platform: Test", content)  # platforms.name, not the raw id
+        self.assertIn("Listing ID: listing-1", content)
+
+    def test_missing_optional_fields_render_as_na_not_a_crash(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir)
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn("Property type: n/a", content)
+        self.assertIn("Currency: n/a", content)
+        self.assertIn("Coordinates: n/a", content)
+
+    def test_a_fully_populated_apartment_shows_every_enriched_field(self) -> None:
+        now = datetime.now(timezone.utc)
+        with self.db.transaction() as conn:
+            apartment_repository.insert_apartment(
+                conn,
+                Apartment(
+                    id="apt-2", platform_id="test_platform", platform_listing_id="listing-2",
+                    title="A Richer Place", url="https://example.com/b", current_price=2000.0,
+                    current_status="available", first_seen_at=now, last_seen_at=now,
+                    latitude=40.7128, longitude=-74.0060, currency="USD", property_type="apartment",
+                    description="A genuinely lovely apartment with a view.",
+                ),
+            )
+            search_repository.add_search_result(
+                conn,
+                SearchResultEntry(
+                    search_id="search-1", apartment_id="apt-2", rank=2, score=0.5,
+                    score_breakdown_json="{}", price_at_search=2000.0, status_at_search="available",
+                ),
+            )
+
+        content = generate_report(self.db, "search-1", output_dir=self.output_dir).read_text(encoding="utf-8")
+
+        self.assertIn("Property type: apartment", content)
+        self.assertIn("Currency: USD", content)
+        self.assertIn("Coordinates: 40.71280, -74.00600", content)
+        self.assertIn("Last updated:", content)
+        self.assertIn("A genuinely lovely apartment with a view.", content)
+
+
+class AISummarySectionTests(ReportGeneratorTestCase):
+    def test_ai_summary_renders_when_provided(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            ai_summary="This search found one affordable, well-located apartment.",
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn('class="ai-summary"', content)
+        self.assertIn("This search found one affordable, well-located apartment.", content)
+
+    def test_ai_summary_omitted_when_none(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir, ai_summary=None)
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertNotIn('class="ai-summary"', content)
+
+    def test_ai_summary_is_html_escaped(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            ai_summary="<script>alert('x')</script>",
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertNotIn("<script>", content)
+        self.assertIn("&lt;script&gt;", content)
 
 
 if __name__ == "__main__":

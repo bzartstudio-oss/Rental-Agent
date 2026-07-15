@@ -1,0 +1,41 @@
+{
+  "_comment": "Not a live capture, not a real platform — a hand-built JSON feed fixture, deliberately shaped nothing like demo_platform's HTML or RentCast's schema. Built for the SDK Validation Sprint (see docs/22_SDK_Validation_Sprint.md) to prove the SDK works against a third, structurally different data shape without any change to the SDK itself, and to stress-test RawListing/Apartment field coverage. `room_category` is deliberately present and deliberately NOT mapped by normalize() — there is no RawListing field for it; see docs/22 finding 1.",
+  "listings": [
+    {
+      "listing_id": "feed-001",
+      "headline": "Sunny One-Bedroom Near the Park",
+      "monthly_rent": 1650,
+      "currency_code": "USD",
+      "full_address": "12 Feed Lane, Sample City",
+      "coords": {"lat": 40.7128, "lng": -74.0060},
+      "unit_category": "apartment",
+      "room_category": "private_room",
+      "bed_count": 1,
+      "bath_count": 1,
+      "area_sqft": 620,
+      "photo_urls": ["images/feed-001-a.png"],
+      "summary": "A bright one-bedroom two blocks from the park, recently repainted.",
+      "state": "open",
+      "detail_url": "https://sample-feed.example.test/listings/feed-001",
+      "last_modified": "2026-07-10T00:00:00Z"
+    },
+    {
+      "listing_id": "feed-002",
+      "headline": "Compact Studio, Great Value",
+      "monthly_rent": 980,
+      "currency_code": "USD",
+      "full_address": "84 Feed Lane, Sample City",
+      "coords": {"lat": 40.7135, "lng": -74.0050},
+      "unit_category": "studio",
+      "room_category": "entire_unit",
+      "bed_count": 0,
+      "bath_count": 1,
+      "area_sqft": 340,
+      "photo_urls": [],
+      "summary": null,
+      "state": "open",
+      "detail_url": "https://sample-feed.example.test/listings/feed-002",
+      "last_modified": "2026-07-08T00:00:00Z"
+    }
+  ]
+}

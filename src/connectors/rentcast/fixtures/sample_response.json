@@ -1,0 +1,70 @@
+{
+  "_comment": "Not a live capture — a hand-built, schema-accurate example matching RentCast's published GET /listings/rental/long-term response shape (verified 2026-07-15 against https://developers.rentcast.io/reference/rental-listings-long-term). Used by tests only, never sent to the real API.",
+  "full_listing": {
+    "id": "123-Sample-St,-Austin,-TX-78701",
+    "formattedAddress": "123 Sample St, Austin, TX 78701",
+    "addressLine1": "123 Sample St",
+    "addressLine2": null,
+    "city": "Austin",
+    "state": "TX",
+    "stateFips": "48",
+    "zipCode": "78701",
+    "county": "Travis",
+    "countyFips": "48453",
+    "latitude": 30.267153,
+    "longitude": -97.743057,
+    "propertyType": "Apartment",
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "squareFootage": 950,
+    "lotSize": null,
+    "yearBuilt": 2015,
+    "status": "Active",
+    "price": 2100,
+    "listingType": "Standard",
+    "listedDate": "2026-06-01T00:00:00.000Z",
+    "removedDate": null,
+    "createdDate": "2026-06-01T00:00:00.000Z",
+    "lastSeenDate": "2026-07-10T00:00:00.000Z",
+    "daysOnMarket": 40,
+    "mlsName": "ACTRIS",
+    "mlsNumber": "1234567",
+    "history": {
+      "2026-06-01": {"event": "Listed", "price": 2100}
+    },
+    "hoa": {"fee": 0},
+    "listingAgent": {
+      "name": "Jane Agent",
+      "phone": "512-555-0100",
+      "email": "jane@example-realty.test",
+      "website": "https://example-realty.test"
+    },
+    "listingOffice": {
+      "name": "Example Realty",
+      "phone": "512-555-0101",
+      "email": "office@example-realty.test",
+      "website": "https://example-realty.test"
+    }
+  },
+  "missing_coordinates_listing": {
+    "id": "456-Other-Ave,-Austin,-TX-78702",
+    "formattedAddress": "456 Other Ave, Austin, TX 78702",
+    "addressLine1": "456 Other Ave",
+    "city": "Austin",
+    "state": "TX",
+    "zipCode": "78702",
+    "latitude": null,
+    "longitude": null,
+    "propertyType": "Single Family",
+    "bedrooms": 3,
+    "bathrooms": 1,
+    "squareFootage": 1200,
+    "status": "Active",
+    "price": 1800
+  },
+  "sparse_listing": {
+    "id": "789-Minimal-Rd,-Austin,-TX-78703",
+    "status": "Active",
+    "price": 1500
+  }
+}

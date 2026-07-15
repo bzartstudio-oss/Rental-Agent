@@ -84,6 +84,7 @@ Ranking Engine box now consults the **Dynamic Filter Engine**
 | `discovery/` | Decide which platforms apply to a request; own the Platform Registry | Fetching/parsing listing data | [05_Platform_Discovery.md](05_Platform_Discovery.md) |
 | `connectors/` | Platform-specific query logic: criteria → raw listing data for exactly one platform, via `sdk/`'s `BaseConnector` | Normalization, ranking, storage, any *other* platform's logic | [06_Connector_Framework.md](06_Connector_Framework.md) |
 | `connectors/sdk/` **(v2.0 Step 5, live)** | The Connector SDK & Plugin Framework: `BaseConnector` template method, `ConnectorFactory`/`ConnectorRegistry`, structured errors/validation/metadata | Any platform-specific logic itself — this package is the framework every connector uses, not a connector | [18_Connector_SDK.md](18_Connector_SDK.md) |
+| `connectors/rentcast/` **(v2.0 Step 7, live)** | The first production (real, non-demo) connector — a real REST API, `X-Api-Key` auth, retry/backoff transport | Any SDK-level logic (that stays in `connectors/sdk/`), any non-RentCast platform logic | [20_First_Production_Connector.md](20_First_Production_Connector.md) |
 | `collectors/` | Generic fetch infrastructure (browser/HTTP), image download, raw-page persistence — shared by all connectors | Platform-specific parsing/selectors | [06_Connector_Framework.md](06_Connector_Framework.md) |
 | `analyzers/` | Normalize raw listings into `Apartment` records, de-duplicate, enrich, detect price/availability changes | Platform-specific field mapping (that's the connector's job to hand over already-shaped `RawListing` data) | [07_Analysis_Engine.md](07_Analysis_Engine.md) |
 | `history/` **(v2.0 Step 2, live)** | Turn a normalized observation into structured `Change` objects and append them to `apartment_change_log`; reconstruct timelines/prior versions for reading | Deciding *when* it's called (that's `analyzers/engine.py`), downloading images (that stays `analyzers/`+`collectors/`) | [07_Analysis_Engine.md](07_Analysis_Engine.md) |
@@ -94,7 +95,8 @@ Ranking Engine box now consults the **Dynamic Filter Engine**
 | `ranking/` | Score and order apartments against a `SearchRequest` | Fetching, storage writes | [08_Ranking_System.md](08_Ranking_System.md) |
 | `services/` | Cross-cutting output services — currently just the HTML Report Generator | Ranking/analysis logic | [09_Report_System.md](09_Report_System.md) |
 | `ui/` | Entry points a human runs (CLI in V1) | Business logic — a UI module only calls `core.agent` | [02_Folder_Guide.md](02_Folder_Guide.md) |
-| `utils/` | Generic helpers (logging, ID generation) with zero project-specific knowledge | Anything stateful or business-specific | [02_Folder_Guide.md](02_Folder_Guide.md) |
+| `utils/` **(logging live since v2.0 Step 7)** | Generic helpers (logging, ID generation) with zero project-specific knowledge | Anything stateful or business-specific | [02_Folder_Guide.md](02_Folder_Guide.md) |
+| `providers/` **(live)** | The Provider Abstraction Layer: a common interface + scoring router selecting the best *available* data provider (RentCast/local demo) or AI provider (Ollama/no-op), with fallback | Any actual fetching/parsing (delegates to `connectors/`) or business logic downstream of a search result | [21_Provider_Abstraction_Layer.md](21_Provider_Abstraction_Layer.md) |
 
 ## The Independence Guardrail
 
@@ -142,4 +144,6 @@ This distinction matters: building a fully generic multi-type schema today, befo
 
 ## Open Questions
 
-- Which platform is the first connector target? See [../notes/Questions.md](../notes/Questions.md).
+- ~~Which platform is the first connector target?~~ Resolved in v2.0 Step 7: RentCast.
+  See [20_First_Production_Connector.md](20_First_Production_Connector.md) and
+  [../notes/Questions.md](../notes/Questions.md).

@@ -45,6 +45,28 @@ REFERENCE_CONNECTORS: list[PlatformCandidate] = [
         discovery_method="manual_seed",
         notes="Second reference connector, deliberately different fixture shape. See connectors/demo_platform_two.py.",
     ),
+    PlatformCandidate(
+        platform_id="rentcast",
+        name="RentCast",
+        country="United States",
+        homepage="https://www.rentcast.io",
+        supported_cities=["Nationwide (United States)"],
+        rental_types=["apartment", "house", "condo", "townhouse"],
+        requires_login=False,
+        connector_available=True,
+        connector_name="rentcast",
+        discovery_method="manual_seed",
+        notes=(
+            "v2.0 Step 7 — the first production (real, non-demo) connector. A real "
+            "developer-facing REST API (not a scraped website): self-service signup, "
+            "an X-Api-Key header, and published Terms of Use permitting this kind of "
+            "programmatic access, verified before writing any connector code. See "
+            "docs/20_First_Production_Connector.md. Requires a RENTCAST_API_KEY "
+            "environment variable (or ConnectorConfiguration.credentials['api_key']) "
+            "to actually authenticate — connector_available=True describes SDK "
+            "integration, not that a key is already configured."
+        ),
+    ),
 ]
 
 KNOWN_UNSUPPORTED_PLATFORMS: list[PlatformCandidate] = [

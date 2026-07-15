@@ -62,11 +62,19 @@ class BaseConnector(ABC):
     # ------------------------------------------------------------------
 
     def search(self, request: SearchRequest) -> ConnectorResult:
+        """`connect()` is called *inside* the `try` block below (v2.0 Step 7 fix — was
+        outside it in the original Step 5 implementation, undetected because both
+        reference connectors' `connect()` is a no-op). `RentCastConnector.connect()`
+        is the first one that actually raises (`ConnectorConfigurationError` when no
+        API key is configured); with `connect()` outside the guard, that exception
+        would have propagated straight out of `search()`, breaking the "search()
+        never raises" guarantee documented above.
+        """
         started_at = datetime.now(timezone.utc)
         start_perf = time.perf_counter()
 
-        self.connect()
         try:
+            self.connect()
             raw_response = self.fetch_listing(request)
             raw_records = self.parse(raw_response)
             listings = [self.normalize(record) for record in raw_records]

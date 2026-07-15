@@ -204,16 +204,24 @@ src/
     logging.py                                        # [v2.0 Step 7, live] get_logger()/StructuredFormatter —
                                                          # first real use is rentcast/'s retry/pagination logging
     ids.py                                            # UUID generation for apartments/search_requests
-  providers/                                            # [live, new package] the Provider Abstraction Layer —
-                                                          # see 21_Provider_Abstraction_Layer.md
+  providers/                                            # [live] Production Provider Framework — see
+                                                          # 21_Provider_Abstraction_Layer.md + 24_Production_Providers.md
     __init__.py                                            # imports data/ and ai/ -> self-registration
     base.py                                                  # Provider (ABC), ProviderKind (DATA/AI)
     scoring.py                                                # ProviderMetadata/ScoringWeights/ProviderScore/
                                                                  # score_provider()
     registry.py                                                 # ProviderRegistry, register_provider()
     router.py                                                    # ProviderRouter, ProviderRunOutcome/ProviderAttempt
-    exceptions.py                                                 # ProviderException/NoProviderAvailableError/
-                                                                    # ProviderConfigurationError
+    exceptions.py                                                 # +ProviderValidationError [v2.5 Step 8]
+    configuration.py                                               # ProviderConfiguration [v2.5 Step 8]
+    factory.py                                                      # ProviderFactory [v2.5 Step 8]
+    health.py                                                        # ProviderHealth, check_provider_health() [v2.5 Step 8]
+    metrics.py                                                        # ProviderMetrics, build_/record_provider_metrics()
+                                                                        # [v2.5 Step 8]
+    statistics.py                                                      # ProviderStatistics, provider_statistics()
+                                                                         # [v2.5 Step 8]
+    validator.py                                                        # ProviderValidator, ProviderValidationResult
+                                                                          # [v2.5 Step 8]
     data/
       __init__.py
       base_data_provider.py                                        # DataProvider(Provider) — platform_id, search()

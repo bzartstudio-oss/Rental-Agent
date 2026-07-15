@@ -4,6 +4,46 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.0] — 2026-07-15 — Production Provider Framework
+
+A new version, not a Version 2.0 step — begun once Steps 1–7, the SDK Validation
+Sprint, and the Production Readiness Review were all confirmed complete. Completes
+the Provider Abstraction Layer (2.0.9) into a full production framework.
+
+### Added
+- `src/providers/configuration.py` — `ProviderConfiguration` (mirrors
+  `ConnectorConfiguration`: `timeout_ms`/`max_retries`/`rate_limit_per_minute`/
+  `credentials`).
+- `src/providers/factory.py` — `ProviderFactory`, the sanctioned way to resolve a
+  provider by id (thin delegation to `ProviderRegistry`).
+- `src/providers/health.py` — `ProviderHealth`/`check_provider_health()`: current
+  availability plus the same `ConnectorHealth` the Knowledge Engine already tracks.
+- `src/providers/metrics.py` — `ProviderMetrics`/`build_provider_metrics()`/
+  `record_provider_metrics()`: one run's metrics, computed via the existing
+  `src.knowledge.metrics` formulas, not reimplemented.
+- `src/providers/statistics.py` — `ProviderStatistics`/`provider_statistics()`: the
+  aggregate reliability view, delegating to `knowledge_service.platform_reliability()`.
+- `src/providers/validator.py` — `ProviderValidator`/`ProviderValidationResult` +
+  `ProviderValidationError`: validates declared `ProviderMetadata` score ranges and
+  surfaces (never re-derives) a data provider's connector-level validation warnings.
+- `docs/24_Production_Providers.md`.
+- 32 new tests (460 total).
+
+### Changed
+- `DataProvider.search()`/`AIProvider.summarize()` gained an optional, default-`None`
+  `config: ProviderConfiguration` parameter on the base class and all four built-in
+  providers — every existing call site is unaffected.
+- `core/agent.py`'s `_run_data_router()` now builds and structured-logs a
+  `ProviderMetrics` snapshot per router-selected run (no duplicate database write —
+  the observation itself is still recorded exactly once, via the pre-existing
+  `platform_metrics` bookkeeping).
+
+### Explicitly not duplicated
+- `ProviderRegistry`, `ProviderRouter`, and the scoring model (2.0.9) were reused as-is,
+  not rebuilt, despite being named in the mission's "Create" list.
+- No retry/backoff/pagination logic was reimplemented at the provider layer — every
+  provider still delegates that to its connector.
+
 ## [2.0.10] — 2026-07-15 — SDK Validation Sprint
 
 A verification exercise, not new functionality: checks four specific claims about the

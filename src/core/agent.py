@@ -22,7 +22,13 @@ from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
 from src.knowledge import knowledge_service
 from src.knowledge import metrics as knowledge_metrics
-from src.providers import NoProviderAvailableError, ProviderKind, ProviderRegistry, ProviderRouter
+from src.providers import (
+    NoProviderAvailableError,
+    ProviderKind,
+    ProviderRegistry,
+    ProviderRouter,
+    build_provider_metrics,
+)
 from src.ranking.ranking_engine import RankingEngine
 from src.search.search_request import SearchRequest
 from src.search_memory import search_memory_service
@@ -30,6 +36,9 @@ from src.services.report_generator import generate_report
 from src.storage import search_repository
 from src.storage.database import Database
 from src.storage.models import Apartment, SearchRequestRecord, SearchResultEntry
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -310,6 +319,27 @@ class RentalResearchAgent:
         provider = ProviderRegistry.get(outcome.provider_id)
         platform_id = provider.platform_id
         result = outcome.result
+
+        # Structured logging + metrics collection (v2.5 Step 8, docs/24_Production_Providers.md
+        # "Metrics") — built here for visibility into *this* run; NOT written to the
+        # Knowledge Engine from this point (that would double-write it) — the existing
+        # `platform_metrics`/`knowledge_service.record_platform_observation` loop at the
+        # end of `run()` already covers this same platform_id, below.
+        run_metrics = build_provider_metrics(outcome.provider_id, platform_id, result)
+        logger.info(
+            "provider run metrics",
+            extra={
+                "provider_id": run_metrics.provider_id,
+                "platform_id": run_metrics.platform_id,
+                "execution_time_ms": run_metrics.execution_time_ms,
+                "success": run_metrics.success,
+                "listing_count": run_metrics.listing_count,
+                "duplicate_rate": run_metrics.duplicate_rate,
+                "extraction_quality_score": run_metrics.extraction_quality_score,
+                "image_quality_score": run_metrics.image_quality_score,
+                "availability_quality_score": run_metrics.availability_quality_score,
+            },
+        )
 
         registered = next((p for p in discovered_platforms if p.id == platform_id), None)
         if registered is None:

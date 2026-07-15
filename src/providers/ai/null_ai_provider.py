@@ -7,6 +7,7 @@ providers. See docs/21_Provider_Abstraction_Layer.md.
 from __future__ import annotations
 
 from src.providers.ai.base_ai_provider import AIProvider
+from src.providers.configuration import ProviderConfiguration
 from src.providers.registry import register_provider
 from src.providers.scoring import ProviderMetadata
 from src.ranking.ranking_engine import RankedApartment
@@ -31,7 +32,12 @@ class NullAIProvider(AIProvider):
             description="No-op AI provider — always available, never fabricates a summary",
         )
 
-    def summarize(self, ranked: list[RankedApartment], request: SearchRequest) -> str | None:
+    def summarize(
+        self,
+        ranked: list[RankedApartment],
+        request: SearchRequest,
+        config: ProviderConfiguration | None = None,
+    ) -> str | None:
         return None
 
 

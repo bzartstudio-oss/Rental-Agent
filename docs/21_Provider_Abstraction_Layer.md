@@ -255,9 +255,15 @@ Every layer degrades honestly rather than crashing:
 
 ## How to Add the Next Provider
 
+**Updated by v2.5 Step 8** — see [24_Production_Providers.md](24_Production_Providers.md)
+for the full current checklist (this section's steps 1–4 below are still accurate;
+Step 8 added a `config` parameter to `search()`/`summarize()` and a
+`ProviderFactory`/`ProviderValidator`/`ProviderHealth`/`ProviderMetrics`/
+`ProviderStatistics` layer on top of what's described here).
+
 1. Subclass `DataProvider` or `AIProvider`, set `provider_id` (and `platform_id` for a
    data provider), implement `is_available()`/`metadata()`/`search()` or
-   `summarize()`.
+   `summarize()` (both now optionally accept a `ProviderConfiguration`).
 2. Call `register_provider(YourProvider())` at the bottom of the module.
 3. Add the module to `src/providers/data/__init__.py` or `src/providers/ai/__init__.py`'s
    eager-import list — the only place that ever needs to change; `ProviderRegistry`/

@@ -10,6 +10,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+from src.providers.configuration import ProviderConfiguration
 from src.providers.data.rentcast_data_provider import RentCastDataProvider
 
 
@@ -51,6 +52,32 @@ class RentCastDataProviderTests(unittest.TestCase):
         self.assertEqual(platform_arg.id, "rentcast")
         self.assertEqual(platform_arg.connector_name, "rentcast")
         mock_connector.search.assert_called_once_with(request)
+
+    @patch("src.providers.data.rentcast_data_provider.ConnectorFactory")
+    def test_no_config_passes_none_through_to_the_connector_factory(self, mock_factory) -> None:
+        from src.search.search_request import SearchRequest
+
+        self.provider.search(SearchRequest(location="Austin, TX"))
+
+        _, kwargs = mock_factory.get.call_args
+        self.assertIsNone(kwargs["config"])
+
+    @patch("src.providers.data.rentcast_data_provider.ConnectorFactory")
+    def test_provider_configuration_translates_into_a_connector_configuration(self, mock_factory) -> None:
+        """A real retry/timeout test: `ProviderConfiguration.timeout_ms`/`max_retries`/
+        `credentials` must reach `RentCastClient`/`RentCastConnector` through a real
+        `ConnectorConfiguration`, not be silently dropped at the provider layer.
+        """
+        from src.search.search_request import SearchRequest
+
+        config = ProviderConfiguration(timeout_ms=5_000, max_retries=2, credentials={"api_key": "test-key"})
+        self.provider.search(SearchRequest(location="Austin, TX"), config=config)
+
+        _, kwargs = mock_factory.get.call_args
+        connector_config = kwargs["config"]
+        self.assertEqual(connector_config.timeout_ms, 5_000)
+        self.assertEqual(connector_config.max_retries, 2)
+        self.assertEqual(connector_config.credentials, {"api_key": "test-key"})
 
 
 if __name__ == "__main__":

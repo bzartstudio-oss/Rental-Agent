@@ -10,6 +10,7 @@ import os
 import requests
 
 from src.providers.ai.base_ai_provider import AIProvider
+from src.providers.configuration import ProviderConfiguration
 from src.providers.exceptions import ProviderException
 from src.providers.registry import register_provider
 from src.providers.scoring import ProviderMetadata
@@ -55,13 +56,19 @@ class OllamaAIProvider(AIProvider):
             description=f"Local Ollama LLM ({_MODEL}) for search-result summarization",
         )
 
-    def summarize(self, ranked: list[RankedApartment], request: SearchRequest) -> str | None:
+    def summarize(
+        self,
+        ranked: list[RankedApartment],
+        request: SearchRequest,
+        config: ProviderConfiguration | None = None,
+    ) -> str | None:
         prompt = _build_prompt(ranked, request)
+        timeout_s = config.timeout_ms / 1000 if config is not None else _GENERATE_TIMEOUT_S
         try:
             response = requests.post(
                 f"{_BASE_URL}/api/generate",
                 json={"model": _MODEL, "prompt": prompt, "stream": False},
-                timeout=_GENERATE_TIMEOUT_S,
+                timeout=timeout_s,
             )
             response.raise_for_status()
         except requests.RequestException as exc:

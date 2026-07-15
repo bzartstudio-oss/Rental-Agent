@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward — see its own section below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5 Step 8 — Production Provider Framework** (done, 460 tests total) is a new, explicitly separate version built on top of all of the above — see its own section below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -455,6 +455,28 @@ fact, distinct from this system's observation timestamps) and one gap found and 
 name, listing id, description — weren't being rendered in the HTML report; now they
 are). 15 new tests (428 total). Full write-up:
 [22_SDK_Validation_Sprint.md](22_SDK_Validation_Sprint.md).
+
+## Version 2.5 — Production Provider Framework (Step 8, done 2026-07-15)
+
+Explicitly a new version, not a continuation of Version 2.0's numbered steps — begun
+once the user confirmed Steps 1–7 complete, the SDK validated (docs/22), and the
+architecture reviewed (docs/23). "Step 8" here is v2.5's own first step, distinct
+from the Dynamic Filter Engine's "Step 8" slot still open in Version 2.0's own list
+above (that item is unaffected and still pending).
+
+Completes the Provider Abstraction Layer (unnumbered Version 2.0 addition, above)
+into a full production framework: `ProviderFactory`, `ProviderConfiguration`,
+`ProviderHealth`, `ProviderMetrics`, `ProviderStatistics`, `ProviderValidator` — every
+one either a thin wrapper over the existing Connector SDK/Knowledge Engine or new,
+genuinely-needed provider-level logic (metadata range validation), never a
+reimplementation. `ProviderConfiguration` closes part of a real gap the Production
+Readiness Review flagged (docs/23 Q5: `rate_limit_per_minute` declared but inert) by
+threading timeout/retry/credentials down into the same `ConnectorConfiguration`
+mechanism a connector already understands — real enforcement of a rate limit itself
+remains future work, not claimed as done here.
+
+32 new tests (460 total: 428 existing untouched + 32 new). Full write-up:
+[24_Production_Providers.md](24_Production_Providers.md).
 
 ## Beyond Version 2.0 (explicitly deferred)
 

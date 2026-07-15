@@ -96,7 +96,7 @@ Ranking Engine box now consults the **Dynamic Filter Engine**
 | `services/` | Cross-cutting output services — currently just the HTML Report Generator | Ranking/analysis logic | [09_Report_System.md](09_Report_System.md) |
 | `ui/` | Entry points a human runs (CLI in V1) | Business logic — a UI module only calls `core.agent` | [02_Folder_Guide.md](02_Folder_Guide.md) |
 | `utils/` **(logging live since v2.0 Step 7)** | Generic helpers (logging, ID generation) with zero project-specific knowledge | Anything stateful or business-specific | [02_Folder_Guide.md](02_Folder_Guide.md) |
-| `providers/` **(live)** | The Provider Abstraction Layer: a common interface + scoring router selecting the best *available* data provider (RentCast/local demo) or AI provider (Ollama/no-op), with fallback | Any actual fetching/parsing (delegates to `connectors/`) or business logic downstream of a search result | [21_Provider_Abstraction_Layer.md](21_Provider_Abstraction_Layer.md) |
+| `providers/` **(live; Production Provider Framework completed v2.5 Step 8)** | A common interface + factory + configuration + scoring router (with fallback) + health/metrics/statistics/validation, for both data providers (RentCast/local demo) and AI providers (Ollama/no-op) | Any actual fetching/parsing (delegates to `connectors/`), any formula/store the Knowledge Engine already owns (reused, not reimplemented), or business logic downstream of a search result | [21_Provider_Abstraction_Layer.md](21_Provider_Abstraction_Layer.md), [24_Production_Providers.md](24_Production_Providers.md) |
 
 ## The Independence Guardrail
 

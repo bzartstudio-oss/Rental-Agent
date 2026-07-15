@@ -23,3 +23,12 @@ class ProviderConfigurationError(ProviderException):
     """A provider is misconfigured in a way that isn't just "temporarily unavailable"
     — e.g. `register_provider` given something that isn't a `Provider`.
     """
+
+
+class ProviderValidationError(ProviderException):
+    """Raised by `ProviderValidator.validate()` only when asked to validate strictly
+    (mirrors `ConnectorValidationError`'s opt-in-only role) — a provider's declared
+    `ProviderMetadata` has a score outside `[0, 1]`, or a `DataProvider` result's own
+    connector-level validation already failed. Never raised by default; see
+    `ProviderValidator` for what "strict" actually checks.
+    """

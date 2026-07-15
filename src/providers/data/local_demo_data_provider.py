@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from src.connectors.sdk.configuration import ConnectorConfiguration
 from src.connectors.sdk.factory import ConnectorFactory
 from src.connectors.sdk.result import ConnectorResult
+from src.providers.configuration import ProviderConfiguration
 from src.providers.data.base_data_provider import DataProvider
 from src.providers.registry import register_provider
 from src.providers.scoring import ProviderMetadata
@@ -49,8 +51,13 @@ class LocalDemoDataProvider(DataProvider):
             description="Local fixture-backed demo connector — always available, no external dependency, not real listings",
         )
 
-    def search(self, request: SearchRequest) -> ConnectorResult:
-        connector = ConnectorFactory.get(_PLATFORM)
+    def search(self, request: SearchRequest, config: ProviderConfiguration | None = None) -> ConnectorResult:
+        connector_config = (
+            ConnectorConfiguration(timeout_ms=config.timeout_ms, max_retries=config.max_retries)
+            if config is not None
+            else None
+        )
+        connector = ConnectorFactory.get(_PLATFORM, config=connector_config)
         return connector.search(request)
 
 

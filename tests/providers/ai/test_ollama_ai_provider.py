@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from src.providers.ai.ollama_ai_provider import OllamaAIProvider, OllamaAIProviderError
+from src.providers.configuration import ProviderConfiguration
 from src.search.search_request import SearchRequest
 
 
@@ -69,6 +70,24 @@ class OllamaSummarizeTests(unittest.TestCase):
     def test_metadata_declares_this_providers_identity(self) -> None:
         metadata = self.provider.metadata()
         self.assertEqual(metadata.provider_id, "ollama")
+
+    @patch("src.providers.ai.ollama_ai_provider.requests.post")
+    def test_default_timeout_used_when_no_config_given(self, mock_post) -> None:
+        mock_post.return_value = Mock(status_code=200, json=lambda: {"response": "ok"})
+        mock_post.return_value.raise_for_status.return_value = None
+
+        self.provider.summarize([], self.request)
+
+        self.assertEqual(mock_post.call_args.kwargs["timeout"], 30.0)
+
+    @patch("src.providers.ai.ollama_ai_provider.requests.post")
+    def test_provider_configuration_overrides_the_request_timeout(self, mock_post) -> None:
+        mock_post.return_value = Mock(status_code=200, json=lambda: {"response": "ok"})
+        mock_post.return_value.raise_for_status.return_value = None
+
+        self.provider.summarize([], self.request, config=ProviderConfiguration(timeout_ms=5_000))
+
+        self.assertEqual(mock_post.call_args.kwargs["timeout"], 5.0)
 
 
 if __name__ == "__main__":

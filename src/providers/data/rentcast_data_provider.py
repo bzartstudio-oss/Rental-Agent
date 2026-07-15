@@ -7,8 +7,10 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
+from src.connectors.sdk.configuration import ConnectorConfiguration
 from src.connectors.sdk.factory import ConnectorFactory
 from src.connectors.sdk.result import ConnectorResult
+from src.providers.configuration import ProviderConfiguration
 from src.providers.data.base_data_provider import DataProvider
 from src.providers.registry import register_provider
 from src.providers.scoring import ProviderMetadata
@@ -53,8 +55,23 @@ class RentCastDataProvider(DataProvider):
             description="Real, live US rental listings via the RentCast API (see docs/20_First_Production_Connector.md)",
         )
 
-    def search(self, request: SearchRequest) -> ConnectorResult:
-        connector = ConnectorFactory.get(_PLATFORM)
+    def search(self, request: SearchRequest, config: ProviderConfiguration | None = None) -> ConnectorResult:
+        """`config` (when given) is translated into a `ConnectorConfiguration` at
+        exactly this point — timeout/retries/credentials are the connector's own
+        concern (`RentCastClient`'s retry/backoff, `RentCastConnector.connect()`'s
+        credential fallback), never reimplemented here.
+        """
+        connector_config = (
+            ConnectorConfiguration(
+                timeout_ms=config.timeout_ms,
+                max_retries=config.max_retries,
+                rate_limit_per_minute=config.rate_limit_per_minute,
+                credentials=config.credentials,
+            )
+            if config is not None
+            else None
+        )
+        connector = ConnectorFactory.get(_PLATFORM, config=connector_config)
         return connector.search(request)
 
 

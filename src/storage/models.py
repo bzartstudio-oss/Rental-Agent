@@ -179,6 +179,30 @@ class SearchRequestRecord:
 
 
 @dataclass
+class PlatformPerformanceObservation:
+    """Mirrors one row of `platform_performance_observations` (docs/03_Data_Model.md) —
+    added in migration 0001, given real read/write logic in v2.0 Step 4. See
+    docs/16_Knowledge_Engine.md for what each metric means and how it's computed. One
+    row per (platform, search) — including failed searches ("Learning From Failure"):
+    `failed=True` still gets a row, with `results_count=0` and most quality scores `None`.
+    """
+
+    platform_id: str
+    search_id: str
+    results_count: int
+    failed: bool
+    parsing_success: bool
+    observed_at: datetime
+    response_time_ms: int | None = None
+    extraction_quality_score: float | None = None
+    image_quality_score: float | None = None
+    availability_quality_score: float | None = None
+    duplicate_rate: float | None = None
+    ranking_usefulness_score: float | None = None
+    id: int | None = None
+
+
+@dataclass
 class SearchObservedApartment:
     """Mirrors one row of `search_observed_apartments` (docs/03_Data_Model.md) — added in
     migration 0001, given real read/write logic in v2.0 Step 3. The **full** set of

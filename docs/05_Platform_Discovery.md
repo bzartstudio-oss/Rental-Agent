@@ -1,7 +1,7 @@
 # 05 — Platform Discovery
 
-Status: v1.1 (Multi-Platform Discovery Framework) live in code. v2.0 (Platform
-Intelligence section below) designed 2026-07-14, not yet implemented.
+Status: v1.1 (Multi-Platform Discovery Framework) live in code. v2.0 Platform
+Intelligence (section below) designed 2026-07-14, **live since v2.0 Step 4 (2026-07-14)**.
 
 ## What Changed From v1.0
 
@@ -99,21 +99,31 @@ reserved in the schema for when that's built, so `sync_platforms()` doesn't need
 change to support it later — it would just be a new source of `PlatformCandidate`s feeding
 the same five-behavior pipeline.
 
-## Platform Intelligence (v2.0, designed — not yet implemented)
+## Platform Intelligence (v2.0 Step 4, live)
 
 v1.1's `platforms` table records what a platform *is* (name, country, coverage). v2.0
 adds what the system has *learned* about how well it performs: `reliability_score`,
-`success_rate`, `avg_response_time_ms`, `avg_apartment_count`, `duplicate_percentage`,
-`connector_version` — see [03_Data_Model.md](03_Data_Model.md) for the exact columns.
+`success_rate`, `avg_response_time_ms`, `avg_apartment_count`, `duplicate_percentage` —
+see [03_Data_Model.md](03_Data_Model.md) for the exact columns. `connector_version`
+remains dormant (always `NULL`) — nothing in the pipeline yet has a way to detect which
+version of a connector produced a given observation.
 
-These are rollups, not independently-set values — `DiscoveryAgent` doesn't compute them
-directly. The Knowledge Engine ([16_Knowledge_Engine.md](16_Knowledge_Engine.md)) writes
-one `platform_performance_observations` row per platform after every search, then
-recomputes the six rollup columns on `platforms` from recent observations. This keeps
+These are rollups, not independently-set values — `DiscoveryAgent` doesn't compute them.
+The Knowledge Engine (`src/knowledge/knowledge_service.py`, see
+[16_Knowledge_Engine.md](16_Knowledge_Engine.md)) writes one
+`platform_performance_observations` row per platform after every search — including a
+failed one — then recomputes five rollup columns on `platforms` from the last 20
+observations via `discovery/platform_registry.py::update_platform_rollups`. This keeps
 `DiscoveryAgent`'s job unchanged (manage identity/metadata) while `platforms` gains a
 second kind of information (performance) owned by a different module — the same
 separation `apartments.current_price` vs. `apartment_price_history` already established:
 one table, two owners, current-state columns are a view over someone else's history.
+
+**Verified against the real dev database, not just tests**: ran the real CLI against
+`data/rental_intelligence.db` and confirmed `demo_platform`/`demo_platform_two` each got
+a real observation row and a correctly-computed `reliability_score`/`success_rate`,
+while platforms that have never been searched (`zillow`, `idealista`, etc.) correctly
+show `None` rather than a fabricated `0` — "unrated," not "confirmed unreliable."
 
 **Why this doesn't change `sync_platforms()`:** the five behaviors are about *identity and
 descriptive metadata* (does this platform exist, what does it cover) — performance is a

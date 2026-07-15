@@ -122,6 +122,31 @@ class PlatformRegistryTests(unittest.TestCase):
             with self.db.transaction() as conn:
                 platform_registry.register_platform(conn, self._make_platform("dup"))
 
+    def test_update_platform_rollups_updates_only_the_five_rollup_columns(self) -> None:
+        original = self._make_platform("rollup_me")
+        with self.db.transaction() as conn:
+            platform_registry.register_platform(conn, original)
+            platform_registry.update_platform_rollups(
+                conn,
+                "rollup_me",
+                reliability_score=0.9,
+                success_rate=0.8,
+                avg_response_time_ms=450.0,
+                avg_apartment_count=12.5,
+                duplicate_percentage=0.05,
+            )
+
+        with self.db.transaction() as conn:
+            fetched = platform_registry.get_platform(conn, "rollup_me")
+
+        self.assertEqual(fetched.reliability_score, 0.9)
+        self.assertEqual(fetched.success_rate, 0.8)
+        self.assertEqual(fetched.avg_response_time_ms, 450.0)
+        self.assertEqual(fetched.avg_apartment_count, 12.5)
+        self.assertEqual(fetched.duplicate_percentage, 0.05)
+        self.assertIsNone(fetched.connector_version)  # untouched, still dormant
+        self.assertEqual(fetched.name, "Seed Platform")  # unrelated metadata untouched
+
 
 if __name__ == "__main__":
     unittest.main()

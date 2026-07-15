@@ -4,6 +4,55 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.4] — 2026-07-14 — Knowledge Engine
+
+Fourth step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").
+
+### Added
+- `src/knowledge/` — the Knowledge Engine: `models.py` (`PlatformKnowledge`,
+  `ConnectorHealth`, `CityKnowledge`, `KnowledgeSummary`), `metrics.py` (pure
+  `extraction_quality_score`, `image_quality_score`, `availability_quality_score`,
+  `duplicate_rate`, `ranking_usefulness_score`), `knowledge_service.py`
+  (`record_platform_observation`, `best_platforms`, `platform_reliability`,
+  `connector_health`, `average_city_price`, `knowledge_summary`,
+  `platform_statistics`, `city_statistics`).
+- `storage/platform_intelligence_repository.py` — `platform_performance_observations`
+  data access.
+- `discovery/platform_registry.py` gained `update_platform_rollups` (five of the six
+  Platform Intelligence rollup columns; `connector_version` stays dormant).
+- `RentalResearchAgent.run()` now captures per-platform metrics after every connector
+  call (success or failure), then records one complete Knowledge Engine observation
+  per platform per search — after ranking and after Search Memory's completion, per
+  the mission's explicit Apartment History -> Search Memory -> Knowledge Engine
+  ordering.
+- "Cities"/"Connectors"/"Searches" knowledge (beyond the original docs/16 design) —
+  all computed on demand from already-stored data, no new schema: `city_statistics`/
+  `average_city_price` aggregate over `search_observed_apartments`/`apartments`;
+  `connector_health` re-groups platform observations; search-level stats reuse Search
+  Memory's existing `search_statistics()` rather than reimplementing it.
+- 42 new tests (198 total): metrics unit tests, knowledge-service tests (including a
+  recent-window-only rollup test and a 500-observation performance test), repository
+  round-trip tests, and a new core-agent integration test file.
+
+### Fixed
+- `connectors/base.py`'s `RawListing.status` used to default to the literal string
+  `"available"`, making "the connector explicitly said available" and "the connector
+  said nothing" indistinguishable — exactly what `availability_quality_score` needs
+  to detect. Changed the default to `None`; the actual "default to available"
+  behavior already lived in `normalizer.py` (`raw.status or "available"`) and needed
+  no change. Both reference connectors set `status` explicitly, so this is a
+  zero-behavior-change fix.
+
+### Not included (explicitly deferred or out of scope)
+- No AI, predictions, or automatic decision-making anywhere in this engine — every
+  value is a plain count, average, or ratio over already-stored facts.
+- "Most common property types" (mentioned in the mission's CITIES tracking) is not
+  implemented — no per-apartment property-type field exists anywhere in the schema
+  (V1.0 scoped to residential apartments only); adding one would be new schema, out
+  of this step's "only accumulate evidence" scope.
+- No Connector SDK, Dynamic Filter Engine, or Deep Analysis Engine — still designed
+  only (Steps 5–7).
+
 ## [2.0.3] — 2026-07-14 — Search Memory & Comparison Engine
 
 Third step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").

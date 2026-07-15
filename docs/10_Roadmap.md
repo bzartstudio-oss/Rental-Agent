@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–3 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), and Search Memory & Comparison Engine (Step 3, 156 tests passing). Steps 4–7 (Knowledge Engine, Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–4 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), and the Knowledge Engine (Step 4, 198 tests passing). Steps 5–7 (Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -208,7 +208,44 @@ self-contained, ending with the one piece that has an unresolved external depend
 4. **Knowledge Engine + Platform Intelligence rollups** — depends on Search Memory's
    `search_id`/timing being solid; this is the "self-improving" mechanism, worth landing
    before more platforms/connectors get added so every connector built afterward is
-   automatically tracked from its first run.
+   automatically tracked from its first run. **Done, 2026-07-14 (v2.0 Step 4).** New
+   `src/knowledge/` package (`models.py`'s `PlatformKnowledge`/`ConnectorHealth`/
+   `CityKnowledge`/`KnowledgeSummary`, `metrics.py`'s pure per-observation metric
+   functions, `knowledge_service.py`'s write-side `record_platform_observation` +
+   read-side `best_platforms`/`platform_reliability`/`connector_health`/
+   `average_city_price`/`knowledge_summary`/`platform_statistics`/`city_statistics`)
+   plus new `storage/platform_intelligence_repository.py` and
+   `discovery/platform_registry.py::update_platform_rollups`. `RentalResearchAgent.run()`
+   now captures per-platform metrics right after each connector call (success or
+   failure) and records the complete observation — after ranking and after Search
+   Memory's completion, per the mission's explicit Apartment History -> Search Memory
+   -> Knowledge Engine ordering. 42 new tests (198 total: 156 existing untouched + 42 new).
+
+   **Cities/Connectors/Searches tracking** (also requested in the Step 4 mission,
+   beyond the original docs/16 design) are all computed on demand from already-stored
+   data — `search_requests`, `platform_performance_observations`, `apartments` — with
+   **no new schema or migration**: "Searches" reuses Search Memory's existing
+   `search_statistics()`; "Connectors" re-groups the same platform observations
+   (`connector_health()`); "Cities" aggregates over `search_observed_apartments` +
+   `apartments`, keyed by the same free-text `location` string Search Memory already
+   uses (`city_statistics()`/`average_city_price()`). "Most common property types" was
+   deliberately not implemented — no per-apartment property-type field exists anywhere
+   in the schema (V1.0 scoped to residential apartments only), so there's exactly one
+   type system-wide; adding that dimension would be new schema, out of this step's
+   "only accumulate evidence" scope.
+
+   A small, zero-behavior-change fix rode along: `RawListing.status`'s default changed
+   from the string `"available"` to `None`, so `availability_quality_score` can tell
+   "the connector said available" apart from "the connector said nothing" — both
+   reference connectors set `status` explicitly, so nothing that already worked
+   changed. Full detail, including the `reliability_score` formula and why
+   `ranking_usefulness_score` is excluded from it, in `docs/16_Knowledge_Engine.md`.
+
+   Verified against the real dev database, not just tests: ran the CLI once and
+   confirmed both real connectors got a genuine observation row and a
+   correctly-computed `reliability_score`/`success_rate`, while platforms never
+   actually searched (`zillow`, `idealista`, etc.) correctly show `NULL` rather than a
+   fabricated `0`.
 5. **Connector SDK** (`BaseConnector` template method) — independent of 2–4, could be
    done in parallel; migrate `demo_platform.py`/`demo_platform_two.py` onto it as proof,
    same way Phase 7 proved the original Connector contract.

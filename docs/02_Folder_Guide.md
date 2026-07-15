@@ -102,10 +102,21 @@ src/
                                                          # search_history/search_timeline/compare_searches/
                                                          # average_execution_time/average_apartment_count/
                                                          # search_statistics)
-  knowledge/                                    # [v2.0, designed — new package] see 16_Knowledge_Engine.md
+  knowledge/                                    # [v2.0 Step 4, live — new package] the Knowledge Engine,
+                                                   # see 16_Knowledge_Engine.md. Named `knowledge_service.py`
+                                                   # rather than the originally-sketched `engine.py`, for
+                                                   # naming consistency with history_service.py/search_memory_service.py
     __init__.py
-    engine.py                                     # records platform_performance_observations,
-                                                     # recomputes Platform Intelligence rollups
+    models.py                                     # PlatformKnowledge/ConnectorHealth/CityKnowledge/
+                                                     # KnowledgeSummary
+    metrics.py                                      # pure: extraction/image/availability_quality_score,
+                                                       # duplicate_rate, ranking_usefulness_score
+    knowledge_service.py                              # write (record_platform_observation, recomputes
+                                                         # Platform Intelligence rollups) + read
+                                                         # (best_platforms/platform_reliability/
+                                                         # connector_health/average_city_price/
+                                                         # knowledge_summary/platform_statistics/
+                                                         # city_statistics)
   ranking/
     __init__.py
     ranking_engine.py                     # see 08_Ranking_System.md
@@ -126,8 +137,10 @@ src/
                                                     # complete_search_execution (the run-stats UPDATE),
                                                     # find_previous_search, get_search_history
     knowledge_repository.py                      # knowledge_entries
-    platform_intelligence_repository.py            # [v2.0, designed] platform_performance_observations
-                                                     # + rollup writes — see 16_Knowledge_Engine.md
+    platform_intelligence_repository.py            # [v2.0 Step 4, live] platform_performance_observations —
+                                                     # data access only; rollup writes are
+                                                     # discovery/platform_registry.py::update_platform_rollups
+                                                     # (platforms is that module's table, not storage/'s)
     analysis_metrics_repository.py                   # [v2.0, designed] apartment_analysis_metrics
   services/
     __init__.py

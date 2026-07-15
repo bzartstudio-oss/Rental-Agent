@@ -111,6 +111,34 @@ def update_platform_metadata(conn: sqlite3.Connection, platform_id: str, updated
     )
 
 
+def update_platform_rollups(
+    conn: sqlite3.Connection,
+    platform_id: str,
+    *,
+    reliability_score: float | None,
+    success_rate: float | None,
+    avg_response_time_ms: float | None,
+    avg_apartment_count: float | None,
+    duplicate_percentage: float | None,
+) -> None:
+    """Recomputes five of the six Platform Intelligence rollup columns (v2.0 Step 4,
+    docs/16_Knowledge_Engine.md) — called by src/knowledge/knowledge_service.py after
+    every new `platform_performance_observations` row. `connector_version` is
+    deliberately untouched: nothing in this step (or any before it) has a way to
+    actually detect which version of a connector produced a given observation — it
+    stays dormant, same as it's been since v2.0 Step 1.
+    """
+    conn.execute(
+        """
+        UPDATE platforms SET
+            reliability_score = ?, success_rate = ?, avg_response_time_ms = ?,
+            avg_apartment_count = ?, duplicate_percentage = ?
+        WHERE id = ?
+        """,
+        (reliability_score, success_rate, avg_response_time_ms, avg_apartment_count, duplicate_percentage, platform_id),
+    )
+
+
 def mark_connector_unavailable(conn: sqlite3.Connection, platform_id: str, note: str | None = None) -> None:
     """Explicitly flags a platform as known-but-unsupported (docs/05_Platform_Discovery.md
     behavior 5) — sets connector_available = 0 and connector_name = NULL without touching

@@ -22,7 +22,13 @@ class RawListing:
     bathrooms: float | None = None
     sqft: float | None = None
     address_raw: str | None = None
-    status: str = "available"
+    # v2.0 Step 4 — was `str = "available"`. That default made a connector that never
+    # sets status indistinguishable from one that explicitly reports "available" (both
+    # produce the same value), which is exactly what
+    # docs/16_Knowledge_Engine.md's availability_quality_score needs to detect. The
+    # actual "default to available" behavior moves to normalizer.py (`raw.status or
+    # "available"`), which already existed and needed no change.
+    status: str | None = None
     image_urls: list[str] = field(default_factory=list)
     # v2.0 (migration 0001) — populated only if the platform provides one; None is a
     # real, honest "no description available" rather than a missing-field bug. See

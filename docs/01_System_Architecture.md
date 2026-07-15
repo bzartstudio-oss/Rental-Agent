@@ -87,12 +87,12 @@ Ranking Engine box now consults the **Dynamic Filter Engine**
 | `analyzers/` | Normalize raw listings into `Apartment` records, de-duplicate, enrich, detect price/availability changes | Platform-specific field mapping (that's the connector's job to hand over already-shaped `RawListing` data) | [07_Analysis_Engine.md](07_Analysis_Engine.md) |
 | `history/` **(v2.0 Step 2, live)** | Turn a normalized observation into structured `Change` objects and append them to `apartment_change_log`; reconstruct timelines/prior versions for reading | Deciding *when* it's called (that's `analyzers/engine.py`), downloading images (that stays `analyzers/`+`collectors/`) | [07_Analysis_Engine.md](07_Analysis_Engine.md) |
 | `search_memory/` **(v2.0 Step 3, live)** | Record a completed search's full execution stats and run-over-run comparison; reconstruct history/timelines/statistics for reading | Deciding *when* to call it (that's `core/agent.py`), any AI/predictive logic (explicitly out of scope) | [17_Search_Memory.md](17_Search_Memory.md) |
+| `knowledge/` **(v2.0 Step 4, live)** | Record per-search platform performance observations; recompute Platform Intelligence rollups; summarize accumulated evidence (platforms/connectors/cities) for reading | Any AI, prediction, or automatic decision-making (explicitly out of scope) — knowledge only ever grows, application code doesn't | [16_Knowledge_Engine.md](16_Knowledge_Engine.md) |
 | `storage/` | All persistence: schema, migrations, repositories for apartments/search history/knowledge/platforms | Business rules about *what* to store (that belongs to the module producing the data) | [03_Data_Model.md](03_Data_Model.md) |
 | `ranking/` | Score and order apartments against a `SearchRequest` | Fetching, storage writes | [08_Ranking_System.md](08_Ranking_System.md) |
 | `services/` | Cross-cutting output services — currently just the HTML Report Generator | Ranking/analysis logic | [09_Report_System.md](09_Report_System.md) |
 | `ui/` | Entry points a human runs (CLI in V1) | Business logic — a UI module only calls `core.agent` | [02_Folder_Guide.md](02_Folder_Guide.md) |
 | `utils/` | Generic helpers (logging, ID generation) with zero project-specific knowledge | Anything stateful or business-specific | [02_Folder_Guide.md](02_Folder_Guide.md) |
-| `knowledge/` **(v2.0, designed)** | Record per-search platform performance observations; recompute Platform Intelligence rollups | Anything about *what* to search or *how* to parse — purely observational | [16_Knowledge_Engine.md](16_Knowledge_Engine.md) |
 
 ## The Independence Guardrail
 

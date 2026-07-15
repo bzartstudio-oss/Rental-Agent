@@ -12,12 +12,15 @@ import importlib
 import json
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from src.analyzers.engine import process_listings
 from src.connectors.base import Connector
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
+from src.knowledge import knowledge_service
+from src.knowledge import metrics as knowledge_metrics
 from src.ranking.ranking_engine import RankingEngine
 from src.search.search_request import SearchRequest
 from src.search_memory import search_memory_service
@@ -52,8 +55,13 @@ class RentalResearchAgent:
         (resolves the open question in docs/06_Connector_Framework.md this way for V1;
         Principle 1 argues against throwing away whatever *did* succeed). Its id and
         the raised exception are still recorded, in Search Memory's run stats (v2.0
-        Step 3) — being skipped for ranking purposes isn't the same as the failure
-        being invisible.
+        Step 3) and as a failed Knowledge Engine observation (v2.0 Step 4) — being
+        skipped for ranking purposes isn't the same as the failure being invisible.
+
+        Integration order (v2.0 Step 4 mission): Apartment History updates happen
+        inline, per listing, inside `process_listings()`; Search Memory's completion
+        record is written next; Knowledge Engine observations are recorded last,
+        since `ranking_usefulness_score` needs ranking to have already happened.
         """
         started_at = time.perf_counter()
 
@@ -73,21 +81,43 @@ class RentalResearchAgent:
         searched_platform_ids: list[str] = []
         connector_versions: dict[str, str | None] = {}
         errors: list[str] = []
+        platform_metrics: list[dict] = []
 
         apartments: list[Apartment] = []
         for platform in platforms:
             if not platform.connector_name:
                 continue  # discover() should already filter to connector_available, but stay defensive
 
+            fetch_started = time.perf_counter()
             try:
                 connector = self._load_connector(platform.connector_name)
                 raw_listings = connector.search(request.criteria)
             except Exception as exc:
                 errors.append(f"{platform.id}: {exc}")
+                platform_metrics.append(
+                    {
+                        "platform_id": platform.id,
+                        "results_count": 0,
+                        "failed": True,
+                        "response_time_ms": int((time.perf_counter() - fetch_started) * 1000),
+                        "raw_listings": None,
+                        "parsing_success": False,
+                    }
+                )
                 continue
 
             searched_platform_ids.append(platform.id)
             connector_versions[platform.id] = platform.connector_version
+            platform_metrics.append(
+                {
+                    "platform_id": platform.id,
+                    "results_count": len(raw_listings),
+                    "failed": False,
+                    "response_time_ms": int((time.perf_counter() - fetch_started) * 1000),
+                    "raw_listings": raw_listings,
+                    "parsing_success": True,
+                }
+            )
 
             with self._db.transaction() as conn:
                 apartments.extend(process_listings(conn, raw_listings, platform.id, request.id))
@@ -124,6 +154,26 @@ class RentalResearchAgent:
                 apartment_count=len(apartments),
                 report_path=str(report_path),
             )
+
+        with self._db.transaction() as conn:
+            for entry in platform_metrics:
+                ranking_score = (
+                    knowledge_metrics.ranking_usefulness_score(entry["platform_id"], ranked, apartments)
+                    if not entry["failed"]
+                    else None
+                )
+                knowledge_service.record_platform_observation(
+                    conn,
+                    entry["platform_id"],
+                    request.id,
+                    results_count=entry["results_count"],
+                    failed=entry["failed"],
+                    response_time_ms=entry["response_time_ms"],
+                    raw_listings=entry["raw_listings"],
+                    ranking_usefulness_score=ranking_score,
+                    parsing_success=entry["parsing_success"],
+                    observed_at=datetime.now(timezone.utc),
+                )
 
         return SearchRunResult(search_id=request.id, apartments=apartments, report_path=report_path)
 

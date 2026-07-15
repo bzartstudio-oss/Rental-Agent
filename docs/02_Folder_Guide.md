@@ -130,6 +130,25 @@ src/
                                                          # connector_health/average_city_price/
                                                          # knowledge_summary/platform_statistics/
                                                          # city_statistics)
+  analysis/                                       # [v2.0 Step 6, live — new package] the Deep Analysis Engine,
+                                                     # see 19_Analysis_Engine.md
+    __init__.py
+    models.py                                       # AnalysisContext/AnalyzerMetadata/AnalyzerResult/
+                                                       # CompositeScore/AnalysisResult
+    base_analyzer.py                                  # BaseAnalyzer — thin contract, not a template method
+    registry.py                                         # AnalysisRegistry, register_analyzer decorator
+    geo.py                                               # pure haversine_km — the only real "location math"
+    scoring.py                                            # CompositeScoreDefinition/ScoringConfiguration/
+                                                            # compute_composite_scores/default_scoring_configuration
+    pipeline.py                                             # AnalysisPipeline — every analyzer, one apartment
+    engine.py                                                # AnalysisEngine — every apartment, one search
+                                                               # (what core/agent.py holds)
+    analysis_service.py                                        # record_analysis / latest_analysis / analysis_history
+    analyzers/
+      __init__.py                                                # imports every analyzer -> self-registration
+      walking_distance.py
+      public_transport.py
+      nearby_amenity.py                                            # shared base + all 9 "nearby X" analyzers
   ranking/
     __init__.py
     ranking_engine.py                     # see 08_Ranking_System.md
@@ -156,7 +175,9 @@ src/
                                                      # data access only; rollup writes are
                                                      # discovery/platform_registry.py::update_platform_rollups
                                                      # (platforms is that module's table, not storage/'s)
-    analysis_metrics_repository.py                   # [v2.0, designed] apartment_analysis_metrics
+    analysis_metrics_repository.py                   # [v2.0 Step 6, live] apartment_analysis_metrics —
+                                                       # data access only; this IS "AnalysisRepository"
+                                                       # from the mission, see 19_Analysis_Engine.md
   services/
     __init__.py
     report_generator.py                           # HTML Report Generator — see 09_Report_System.md

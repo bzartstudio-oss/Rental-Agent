@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–5 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), and the Connector SDK & Plugin Framework (Step 5, 256 tests passing). Steps 6–7 (Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–6 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), and the Deep Analysis Engine (Step 6, 314 tests passing). **Step 6 was built ahead of Step 7** (Dynamic Filter Engine) at explicit instruction, swapping the original plan's order — the numbered list below now reflects the order things actually happened in, not the original sequencing; see that step's entry for the reasoning. Step 7 remains designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -313,16 +313,46 @@ self-contained, ending with the one piece that has an unresolved external depend
    `ConnectorFactory` -> `BaseConnector` path end-to-end and confirmed identical
    results (6 apartments from the same 2 platforms) plus correct Knowledge Engine
    observations, exactly as before the refactor.
-6. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–5;
+6. **Deep Analysis Engine** (`distance.py`, `nearby.py`, `scores.py` as originally
+   sketched) — originally planned last (Step 7), because it's blocked on a real
+   product/vendor decision (which geocoding/transit/nearby-amenity data source) that
+   still hasn't been made — see [07_Analysis_Engine.md](07_Analysis_Engine.md) Open
+   Questions. **Built ahead of schedule instead, at explicit instruction, as Step 6
+   (done, 2026-07-15)** — the framework (the `apartment_analysis_metrics` store,
+   evidence-based analyzers) was buildable and testable with real math and curated
+   fake/stubbed reference data *before* the vendor decision, exactly as this doc always
+   said it could be; only real live-API metric computation still waits for that
+   decision. New `src/analysis/` package: `BaseAnalyzer`/`AnalysisRegistry`
+   (self-registering plugin framework, mirroring `connectors.sdk` but simpler — see
+   [19_Analysis_Engine.md](19_Analysis_Engine.md) "Plugin System"), eleven analyzers
+   (`walking_distance`, `public_transport`, nine "nearby X" amenity analyzers sharing
+   one base class), `AnalysisPipeline`/`AnalysisEngine` (per-apartment / per-search
+   orchestration), configurable composite scoring (`scoring.py` — Location/
+   Convenience/Lifestyle/Accessibility/Overall, weights as data, not hardcoded),
+   `analysis_service.py` (write/read persistence, append-only). `core/agent.py` now
+   runs `AnalysisEngine` after Apartment History and before Ranking — the mission's own
+   diagram placed it after Search Memory/Knowledge Engine too, but those two must stay
+   at the very end of `run()` by their own documented design
+   ([16](16_Knowledge_Engine.md)/[17](17_Search_Memory.md) "Where This Runs"); moving
+   them would have broken already-passing tests, so Analysis Engine slots in as early
+   as it correctly can instead. New migration `0003_analysis_engine_metrics.sql` adds
+   `confidence`/`evidence_json`/`analyzer_version` to `apartment_analysis_metrics`;
+   `0001`/`0002` untouched. `services/report_generator.py` gained one optional,
+   backward-compatible parameter to show analyzer/composite scores, evidence, and
+   warnings per listing. 58 new tests (314 total: 256 existing untouched + 58 new).
+
+   Verified against the real dev database, not just tests: ran the CLI once with no
+   curated data (zero metrics persisted — correctly honest "no evidence yet," not a
+   fabricated score), then seeded a few illustrative `Example City` reference facts
+   (clearly fictional demo data, same convention as `demo_platform`'s own fixtures) and
+   ran again, confirming real, correctly-computed analyzer and composite scores flowed
+   all the way through to the generated HTML report.
+7. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–6;
    migrate the 5 existing filters first (behavior-preserving refactor), then add one or
    two real filters per new category as *examples* of the pattern working, not all ~25
    at once — the framework, not the exhaustive filter list, is what v2.0 is scoped to.
-7. **Deep Analysis Engine** (`distance.py`, `nearby.py`, `scores.py`) — last, because it's
-   blocked on a real product/vendor decision (which geocoding/transit/nearby-amenity data
-   source) that hasn't been made — see [07_Analysis_Engine.md](07_Analysis_Engine.md)
-   Open Questions. Framework (the `apartment_analysis_metrics` store, the
-   `SearchRequest` → proximity-filter plumbing) can be built and tested with fake/stubbed
-   metrics before that decision is made; real metric computation waits for it.
+   Now unblocked to actually read real `apartment_analysis_metrics` data for its
+   proximity/score filters, since Step 6 made that data genuinely producible.
 
 Each step: preserve all 73 currently-passing tests, add new tests for the new behavior,
 run the full suite, commit — the same discipline every phase so far has followed.

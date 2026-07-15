@@ -249,23 +249,28 @@ why data alone can't replace it.
 | `description` | TEXT, nullable | — |
 | `created_at` | TEXT (ISO 8601) | — |
 
-### `apartment_analysis_metrics` — new (v2.0, designed)
+### `apartment_analysis_metrics` — new (v2.0 Step 6, live)
 
 The Deep Analysis Engine's output store (see
-[07_Analysis_Engine.md](07_Analysis_Engine.md)) — generic key/value so a new metric type
+[19_Analysis_Engine.md](19_Analysis_Engine.md)) — generic key/value so a new metric type
 (a "future environmental indicator," as the mission spec puts it) doesn't need a schema
-migration.
+migration. `confidence`/`evidence_json`/`analyzer_version` were added in migration 0003
+(v2.0 Step 6) once the richer `AnalyzerResult` shape (Score/Confidence/Evidence/
+Timestamp/Version/Source) needed more than the four columns originally designed here.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK AUTOINCREMENT | — |
 | `apartment_id` | TEXT FK → `apartments.id` | — |
-| `metric_name` | TEXT | e.g. `"walking_distance_minutes"`, `"lifestyle_score"`, `"nearby_supermarket_count"` |
-| `metric_value` | REAL | — |
-| `metric_unit` | TEXT, nullable | e.g. `"minutes"`, `"count"`, `"score_0_1"` |
-| `source_module` | TEXT | Which analyzer computed this — e.g. `"analyzers.distance"`, `"analyzers.scores"` |
+| `metric_name` | TEXT | e.g. `"walking_distance"`, `"nearby_supermarkets"`, `"composite:location_score"` |
+| `metric_value` | REAL, `NOT NULL` | The analyzer's score — never written when there's no evidence, see [19_Analysis_Engine.md](19_Analysis_Engine.md) "Analysis History" |
+| `metric_unit` | TEXT, nullable | Unused by any built-in analyzer so far (every score is unitless, 0–1) |
+| `source_module` | TEXT | Which analyzer computed this — e.g. `"haversine_calculation"`, `"knowledge_entries"`, `"src.analysis.scoring"` |
 | `search_id` | TEXT FK → `search_requests.id`, nullable | Which run computed/refreshed this value |
-| `computed_at` | TEXT (ISO 8601) | — |
+| `computed_at` | TEXT (ISO 8601) | Shared across every metric from the same analysis run — see `AnalysisContext` |
+| `confidence` | REAL, nullable | **v2.0 Step 6.** 0–1, how much evidence backs this score |
+| `evidence_json` | TEXT (JSON), nullable | **v2.0 Step 6.** `{"evidence": [...], "warnings": [...]}` — human-readable strings, not re-derivable data |
+| `analyzer_version` | TEXT, nullable | **v2.0 Step 6.** Which version of the analyzer produced this row |
 
 Append-only like everything else here: a metric that changes (e.g. a new bus line changes
 `transit_score`) gets a new row, not an overwrite — "the user must later be able to

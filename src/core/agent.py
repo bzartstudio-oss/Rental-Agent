@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.analysis import analysis_service
+from src.analysis.engine import AnalysisEngine
 from src.analyzers.engine import process_listings
 from src.connectors.sdk import ConnectorException, ConnectorFactory
 from src.discovery.discovery_agent import DiscoveryAgent
@@ -41,6 +43,7 @@ class RentalResearchAgent:
         self._db = db
         self._output_dir = output_dir
         self._discovery = DiscoveryAgent(db)
+        self._analysis = AnalysisEngine()
         self._ranking = RankingEngine()
 
     def run(self, request: SearchRequest) -> SearchRunResult:
@@ -67,6 +70,17 @@ class RentalResearchAgent:
         per-platform timing/success/failure now comes from the `ConnectorResult` each
         connector returns (measured once, inside `BaseConnector.search()`) rather than
         `time.perf_counter()` calls here duplicating that measurement.
+
+        v2.0 Step 6: the Deep Analysis Engine runs once all apartments are collected,
+        before ranking — the mission's own diagram shows it after Search Memory/
+        Knowledge Engine, but those two already run at the very *end* of this method by
+        their own explicit design (they need the final report path/apartment counts,
+        see docs/17_Search_Memory.md/docs/16_Knowledge_Engine.md "Where This Runs") —
+        moving them earlier would break that design and their own tests. Analysis runs
+        as early as it correctly can instead: right after Apartment History, before
+        Ranking, exactly matching the mission's relative ordering between those two.
+        Analysis never mutates `Apartment` — its output is stored separately
+        (`apartment_analysis_metrics`) and passed to the Report Generator directly.
         """
         started_at = time.perf_counter()
 
@@ -141,6 +155,13 @@ class RentalResearchAgent:
             with self._db.transaction() as conn:
                 apartments.extend(process_listings(conn, result.listings, platform.id, request.id))
 
+        with self._db.transaction() as conn:
+            analysis_results = self._analysis.analyze(
+                conn, apartments, location=request.location, search_id=request.id
+            )
+            for result in analysis_results.values():
+                analysis_service.record_analysis(conn, result)
+
         ranked = self._ranking.rank(apartments, request)
 
         with self._db.transaction() as conn:
@@ -158,7 +179,9 @@ class RentalResearchAgent:
                     ),
                 )
 
-        report_path = generate_report(self._db, request.id, output_dir=self._output_dir)
+        report_path = generate_report(
+            self._db, request.id, output_dir=self._output_dir, analysis_results=analysis_results
+        )
         execution_time_ms = int((time.perf_counter() - started_at) * 1000)
 
         with self._db.transaction() as conn:

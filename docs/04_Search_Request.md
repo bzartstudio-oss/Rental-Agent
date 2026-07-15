@@ -59,13 +59,17 @@ logic — existing tests for them keep passing unchanged (see
 
 `proximity.py` and `score.py` filters (`max_walking_minutes`, `safety_score`, etc.)
 `matches()`/`score()` against a value that doesn't exist on `Apartment` itself — it comes
-from `apartment_analysis_metrics`, computed by the Deep Analysis Engine (see
-[07_Analysis_Engine.md](07_Analysis_Engine.md)). This is why the pipeline order (Analysis
-→ Ranking, already established in v1.0) matters more under v2.0 than it did before: a
+from `apartment_analysis_metrics`, computed by the Deep Analysis Engine (**live as of
+v2.0 Step 6** — see [19_Analysis_Engine.md](19_Analysis_Engine.md); this `search/filters/`
+subpackage itself remains v2.0 Step 7, not yet built). This is why the pipeline order
+(Analysis → Ranking, already established in v1.0, and now real: `core/agent.py` runs
+`AnalysisEngine` before `RankingEngine`) matters more under v2.0 than it did before: a
 proximity/score filter is only usable for a `SearchRequest` if the Analysis Engine has
 already computed that metric for the candidate apartments *in this same run*. A filter
 whose metric hasn't been computed yet should fail closed (exclude the apartment, not
-crash) — exact mechanism is a v2.0 implementation detail, not resolved further here.
+crash) — exact mechanism is still a Step 7 implementation detail, not resolved further
+here; the metrics themselves now genuinely exist to be read (`AnalysisResult`/
+`storage.analysis_metrics_repository`), which they didn't when this was first written.
 
 ## The Room/Flatshare Filter Tension
 

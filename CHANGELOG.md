@@ -4,6 +4,64 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.7] — 2026-07-15 — Deep Analysis Engine
+
+Built as Step 6 (ahead of the Dynamic Filter Engine, originally planned as Step 6, now
+Step 7) at explicit instruction — `docs/10_Roadmap.md` updated to reflect the actual
+build order.
+
+### Added
+- `src/analysis/` — a self-registering analyzer plugin framework: `BaseAnalyzer`
+  (thin contract: `metadata()`/`analyze()`), `AnalysisRegistry`
+  (`@register_analyzer`), `AnalysisPipeline` (every analyzer, one apartment, isolating
+  a broken one), `AnalysisEngine` (every apartment, one search — held by
+  `core/agent.py`), `scoring.py` (configurable composite scoring — weights are data,
+  never hardcoded), `analysis_service.py` (append-only write/read persistence).
+- Eleven analyzers: `walking_distance`, `public_transport` (real haversine math —
+  `src/analysis/geo.py`), and nine "nearby X" amenity analyzers (supermarkets,
+  pharmacies, hospitals, universities, schools, parks, restaurants, gyms, parking)
+  sharing one base class.
+- Five composite scores: Location, Convenience, Lifestyle, Accessibility, and Overall
+  Analysis Score.
+- Migration `0003_analysis_engine_metrics.sql` — adds `confidence`/`evidence_json`/
+  `analyzer_version` to `apartment_analysis_metrics` (schema-only since migration
+  0001). `0001`/`0002` untouched.
+- `docs/19_Analysis_Engine.md` — architecture, pipeline, analyzer lifecycle, how to
+  build a new analyzer, scoring model. (The mission asked for `docs/18_...`; `18` was
+  already taken by the Connector SDK — used the next free number.)
+- 58 new tests (314 total): unit tests for every module, per-analyzer no-evidence/
+  real-evidence tests, a broken-analyzer isolation test, a new
+  `tests/services/test_report_generator.py`, a real-pipeline integration test, and a
+  300-apartment performance test.
+
+### Changed
+- `core/agent.py`: `AnalysisEngine` runs after Apartment History, before Ranking.
+  (The mission's diagram placed it after Search Memory/Knowledge Engine too, but both
+  must run at the very end of `run()` by their own already-documented design — see
+  `docs/19_Analysis_Engine.md` "Pipeline" for why moving them would have broken
+  passing tests.)
+- `services/report_generator.py::generate_report()` gained one new, optional,
+  default-`None` parameter (`analysis_results`) to show analyzer/composite scores,
+  evidence, and warnings per listing. Every existing caller is unaffected.
+
+### Evidence model — no live external data source
+- Every analyzer's evidence is real coordinate math (haversine) or a curated
+  `storage/reference_data_repository.py` (`knowledge_entries`) fact — never a live
+  geocoding/places/transit API, since that vendor decision remains genuinely unmade.
+  A "no evidence" result (`score=None`) is honestly reported, never persisted, and
+  visible in the report as a warning for the run that computed it.
+- Verified against the real dev database: ran the CLI with no curated data (zero
+  metrics persisted, correctly honest), then seeded a few illustrative `Example City`
+  facts and ran again, confirming real, correctly-computed scores through to the
+  report.
+
+### Not included (explicitly out of scope)
+- No real geocoding/places/transit API integration, no machine learning, no AI, no
+  predictive inference anywhere — every score is deterministic arithmetic or a direct
+  function of a curated fact.
+- No wiring into `search/criteria.py` or `ranking/` — that's the Dynamic Filter
+  Engine's job (Step 7, not yet built); this sprint only makes the metrics exist.
+
 ## [2.0.6] — 2026-07-15 — Connector SDK & Plugin Framework
 
 The largest sprint of Version 2.0 — a full plugin framework for connectors, not just

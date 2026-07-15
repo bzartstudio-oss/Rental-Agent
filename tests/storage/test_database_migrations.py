@@ -68,7 +68,7 @@ class MigrationFromV1DatabaseTests(unittest.TestCase):
             self.assertIn("platform_performance_observations", tables)
 
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([r[0] for r in applied], [1, 2])  # every real migration applied, in order
+            self.assertEqual([r[0] for r in applied], [1, 2, 3])  # every real migration applied, in order
         finally:
             conn.close()
 
@@ -88,7 +88,7 @@ class RepeatedStartupTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([r[0] for r in rows], [1, 2])  # each recorded exactly once, not twice
+            self.assertEqual([r[0] for r in rows], [1, 2, 3])  # each recorded exactly once, not twice
         finally:
             conn.close()
 
@@ -233,7 +233,32 @@ class Migration0002IndexTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([row[0] for row in applied], [1, 2])
+            self.assertEqual([row[0] for row in applied], [1, 2, 3])
+        finally:
+            conn.close()
+
+
+class Migration0003AnalysisMetricsColumnsTests(unittest.TestCase):
+    """v2.0 Step 6: 0003_analysis_engine_metrics.sql — adds confidence/evidence_json/
+    analyzer_version to apartment_analysis_metrics (schema-only since migration 0001).
+    """
+
+    def setUp(self) -> None:
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmp_dir.name) / "test.db"
+
+    def tearDown(self) -> None:
+        self._tmp_dir.cleanup()
+
+    def test_the_new_columns_exist_after_migration(self) -> None:
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(apartment_analysis_metrics)").fetchall()}
+            self.assertIn("confidence", columns)
+            self.assertIn("evidence_json", columns)
+            self.assertIn("analyzer_version", columns)
         finally:
             conn.close()
 

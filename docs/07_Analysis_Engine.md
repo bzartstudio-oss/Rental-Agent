@@ -3,8 +3,12 @@
 Status: V1.0 core write sequence live in code. **v2.0 Step 2 (2026-07-14): extended
 Apartment History and Image Change Detection are now live** — see "Write Sequence" and
 "Image Change Detection" below, both updated to describe the actual implementation.
-**Deep Analysis Engine remains designed only** (Step 7, blocked on an unmade vendor
-decision — see "Open Questions").
+**Deep Analysis Engine is live as of v2.0 Step 6 (2026-07-15)** — the framework below
+("Deep Analysis Engine") describes the original design; the actual implementation
+(a registry-based plugin framework, not the three fixed modules originally sketched)
+is documented in full in [19_Analysis_Engine.md](19_Analysis_Engine.md). The vendor
+decision this section flags as blocking real geocoding/POI data remains genuinely
+unmade — see that doc's "Evidence Model" for how the framework works honestly without it.
 
 ## Goal (unchanged)
 
@@ -102,32 +106,44 @@ knowing whether an apartment was genuinely absent from a platform's full result 
 run, which is Search Memory's job, Step 3, not built yet). Both are implemented and
 unit-tested standalone so they're ready the moment their real trigger exists.
 
-## Deep Analysis Engine (v2.0, designed — not yet implemented)
+## Deep Analysis Engine (live as of v2.0 Step 6 — see [19_Analysis_Engine.md](19_Analysis_Engine.md))
 
-Requirement 6 — the Research Agent doesn't stop at scraping. New modules alongside the
-existing four:
+Requirement 6 — the Research Agent doesn't stop at scraping. Originally sketched here
+as three fixed modules (`distance.py`/`nearby.py`/`scores.py`); actually built as
+`src/analysis/`, a registry-based plugin framework where each of those three sketched
+responsibilities became one or more independently-registered `BaseAnalyzer` classes
+instead — see [19_Analysis_Engine.md](19_Analysis_Engine.md) "Architecture" for why
+that's a better fit for "future analysis modules must be addable without modifying
+existing modules" than three growing files would have been:
 
-- **`analyzers/distance.py`** — walking distance, public transport time/score, from the
-  apartment's `latitude`/`longitude` to whatever reference point(s) a `SearchRequest`
-  cares about (see [04_Search_Request.md](04_Search_Request.md) "The Proximity/Score
-  Dependency"). Requires a geocoding/routing data source — *which one is an
-  implementation-time decision, not resolved here* (could be a paid API, an open dataset,
-  or a knowledge-base-backed approximation; whichever is chosen must respect the same
-  "no live scraping of a commercial site without checking ToS" caution already applied to
-  connectors elsewhere in this project).
-- **`analyzers/nearby.py`** — counts/distances to nearby amenities (supermarkets,
-  universities, gyms, pharmacies, hospitals) — same external-data-source caveat as above.
-- **`analyzers/scores.py`** — composite scores (`lifestyle_score`, `convenience_score`,
-  `location_score`) computed from the outputs of `distance.py`/`nearby.py` plus
-  `knowledge_entries` (e.g. a neighborhood safety/noise benchmark). "Future environmental
-  indicators" (air quality, flood risk, etc.) slot in here later as more `metric_name`
-  values — no schema change needed, per `apartment_analysis_metrics`'s generic design.
+- **Walking distance / public transport** (was `analyzers/distance.py`) — real
+  haversine math from the apartment's `latitude`/`longitude` to a reference point (see
+  [04_Search_Request.md](04_Search_Request.md) "The Proximity/Score Dependency"). The
+  geocoding/routing data source this originally flagged as needed is still an unmade
+  vendor decision — the math is real and tested; the coordinates it needs aren't
+  populated by any connector yet, so both analyzers honestly report "no evidence" in
+  the live pipeline today.
+- **Nine "nearby X" analyzers** (was `analyzers/nearby.py`) — supermarkets,
+  pharmacies, hospitals, universities, schools, parks, restaurants, gyms, parking.
+  Same external-data-source caveat: evidence comes from curated
+  `knowledge_entries` facts (`storage/reference_data_repository.py`), not a live API.
+- **Composite scores** (was `analyzers/scores.py`) — `location_score`,
+  `convenience_score`, `lifestyle_score`, `accessibility_score`, and
+  `overall_analysis_score`, computed from the analyzers above via a configurable
+  weighted average (`src/analysis/scoring.py`) — not hardcoded weights. "Future
+  environmental indicators" (air quality, flood risk, etc.) still slot in later as new
+  analyzer classes — no schema change needed, per `apartment_analysis_metrics`'s
+  generic design, extended in migration 0003 with `confidence`/`evidence_json`/
+  `analyzer_version` columns to match the richer result shape v2.0 Step 6 needed.
 
-Every computed value is written to `apartment_analysis_metrics`
+Every computed value **with a real score** is written to `apartment_analysis_metrics`
 ([03_Data_Model.md](03_Data_Model.md)), tagged with which module computed it and which
-search triggered the computation — never held only in memory, and never silently
-overwritten if recomputed later (a new row, not an update — same versioning principle as
-everything else in this system).
+search triggered the computation — never held only in memory for a persisted result,
+and never silently overwritten if recomputed later (a new row, not an update — same
+versioning principle as everything else in this system). A "no evidence" result
+(`score=None`) is deliberately *not* persisted — see
+[19_Analysis_Engine.md](19_Analysis_Engine.md) "Analysis History" for why, and how the
+Report Generator still shows it anyway for the run that just computed it.
 
 **Resolves the v1.0 open question** ("are enriched fields stored or computed on read?"):
 **both**, split by kind — `price_per_sqft` (a pure function of already-stored

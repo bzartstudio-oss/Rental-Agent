@@ -203,6 +203,36 @@ class PlatformPerformanceObservation:
 
 
 @dataclass
+class ApartmentAnalysisMetric:
+    """Mirrors one row of `apartment_analysis_metrics` (docs/03_Data_Model.md) — added in
+    migration 0001, given real read/write logic in v2.0 Step 6. Generic key/value so a
+    new metric type never needs a schema migration: `metric_name` identifies which
+    analyzer/metric this is (e.g. `"walking_distance"`, `"composite:location_score"`),
+    `metric_value` is that analyzer's score. `confidence`/`evidence_json`/
+    `analyzer_version` were added in migration 0003, once the Deep Analysis Engine's
+    richer `AnalyzerResult` shape (Score/Confidence/Evidence/Timestamp/Version/Source)
+    needed more than the four columns migration 0001 originally designed.
+
+    Never written when there's no evidence to score (`metric_value` is `NOT NULL`) —
+    see `src/analysis/analysis_service.py`. Append-only like everything else in this
+    system: a metric that changes gets a new row, never an overwrite.
+    """
+
+    apartment_id: str
+    metric_name: str
+    metric_value: float
+    source_module: str
+    computed_at: datetime
+    metric_unit: str | None = None
+    search_id: str | None = None
+    confidence: float | None = None
+    evidence: list[str] | None = None
+    warnings: list[str] | None = None
+    analyzer_version: str | None = None
+    id: int | None = None
+
+
+@dataclass
 class SearchObservedApartment:
     """Mirrors one row of `search_observed_apartments` (docs/03_Data_Model.md) — added in
     migration 0001, given real read/write logic in v2.0 Step 3. The **full** set of

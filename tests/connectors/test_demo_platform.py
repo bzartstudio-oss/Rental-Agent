@@ -1,3 +1,8 @@
+"""v2.0 Step 5: DemoPlatformConnector rebuilt on BaseConnector — same fixture, same
+expected listings, but now through `connector.search(SearchRequest)` returning a
+`ConnectorResult` instead of `connector.search(criteria=dict)` returning a bare list.
+"""
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,11 +10,27 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from src.connectors.demo_platform import DemoPlatformConnector
+from src.search.search_request import SearchRequest
+from tests.connectors.sdk.certification import ConnectorCertificationMixin
 from tests.support import isolated_collectors
 
 
 def _file_uri_to_path(uri: str) -> Path:
     return Path(url2pathname(urlparse(uri).path))
+
+
+class DemoPlatformConnectorCertificationTests(ConnectorCertificationMixin, unittest.TestCase):
+    connector_class = DemoPlatformConnector
+    search_request = SearchRequest(location="Example City")
+
+    def setUp(self) -> None:
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self._collectors_cm = isolated_collectors(Path(self._tmp_dir.name))
+        self._collectors_cm.__enter__()
+
+    def tearDown(self) -> None:
+        self._collectors_cm.__exit__(None, None, None)
+        self._tmp_dir.cleanup()
 
 
 class DemoPlatformConnectorTests(unittest.TestCase):
@@ -22,21 +43,24 @@ class DemoPlatformConnectorTests(unittest.TestCase):
         self._collectors_cm.__exit__(None, None, None)
         self._tmp_dir.cleanup()
 
-    def test_search_returns_all_three_fixture_listings(self) -> None:
+    def _search(self):
         connector = DemoPlatformConnector()
+        return connector.search(SearchRequest(location="Example City"))
 
-        listings = connector.search(criteria={})
+    def test_search_returns_a_successful_result_with_all_three_fixture_listings(self) -> None:
+        result = self._search()
 
-        self.assertEqual(len(listings), 3)
+        self.assertTrue(result.success)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.results_count, 3)
         self.assertEqual(
-            {listing.platform_listing_id for listing in listings},
+            {listing.platform_listing_id for listing in result.listings},
             {"demo-001", "demo-002", "demo-003"},
         )
 
     def test_listing_fields_are_parsed_correctly(self) -> None:
-        connector = DemoPlatformConnector()
-
-        listings = {listing.platform_listing_id: listing for listing in connector.search(criteria={})}
+        result = self._search()
+        listings = {listing.platform_listing_id: listing for listing in result.listings}
         studio = listings["demo-002"]
 
         self.assertEqual(studio.title, "Cozy Studio, Walk to Downtown")
@@ -48,23 +72,29 @@ class DemoPlatformConnectorTests(unittest.TestCase):
         self.assertTrue(studio.url.startswith("https://"))
 
     def test_image_urls_resolve_to_real_existing_files(self) -> None:
-        connector = DemoPlatformConnector()
+        result = self._search()
 
-        listings = connector.search(criteria={})
-
-        for listing in listings:
+        for listing in result.listings:
             self.assertEqual(len(listing.image_urls), 1)
             image_path = _file_uri_to_path(listing.image_urls[0])
             self.assertTrue(image_path.exists(), f"{image_path} should exist")
             self.assertTrue(image_path.read_bytes().startswith(b"\x89PNG"))
 
     def test_search_saves_a_raw_page_capture(self) -> None:
-        connector = DemoPlatformConnector()
-        connector.search(criteria={})
+        self._search()
 
         captured_files = list(Path(self._tmp_dir.name).glob("raw_pages/demo_platform/*.html"))
         self.assertEqual(len(captured_files), 1)
         self.assertIn("Demo Rentals", captured_files[0].read_text(encoding="utf-8"))
+
+    def test_no_validation_warnings_for_a_fully_populated_fixture(self) -> None:
+        result = self._search()
+        self.assertEqual(result.validation_warnings, [])
+
+    def test_response_time_is_measured(self) -> None:
+        result = self._search()
+        self.assertIsNotNone(result.response_time_ms)
+        self.assertGreaterEqual(result.response_time_ms, 0)
 
 
 if __name__ == "__main__":

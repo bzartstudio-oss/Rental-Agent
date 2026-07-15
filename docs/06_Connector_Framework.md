@@ -1,7 +1,10 @@
 # 06 — Connector Framework
 
-Status: V1.0 Connector/Collector split live in code. **v2.0 Connector SDK designed
-2026-07-14, not yet implemented** — see "Connector SDK" below.
+Status: V1.0 Connector/Collector split live in code. **v2.0 Connector SDK & Plugin
+Framework live as of v2.0 Step 5 (2026-07-15)** — see "Connector SDK" below and the
+full writeup in [18_Connector_SDK.md](18_Connector_SDK.md), now the authoritative doc
+for how a connector is actually built. This file's Collector layer content (unchanged)
+and the historical v1.0/v1.1 narrative below remain accurate.
 
 ## Why a Connector Framework
 
@@ -22,12 +25,16 @@ A connector calls a collector; a collector never calls a connector. This keeps t
 
 ## Connector Contract
 
-`connectors/base.py` defines the interface every connector implements:
+**Superseded by the Connector SDK (v2.0 Step 5) — see
+[18_Connector_SDK.md](18_Connector_SDK.md).** `connectors/base.py` now holds only
+`RawListing`; every connector subclasses `src.connectors.sdk.BaseConnector`, whose
+`search(request: SearchRequest) -> ConnectorResult` template method is implemented
+once and calls out to `build_url`/`parse`/`normalize`/`connector_info` — the only
+genuinely platform-specific pieces. The bullet-point contract that used to live here
+(a bare `search(criteria) -> list[RawListing]` abstract method) is what got replaced;
+kept below, struck through in spirit, for historical context on what changed and why.
 
-- `platform_id: str` — matches this connector's row in the `platforms` table
-- `search(criteria: SearchCriteria) -> list[RawListing]` — given normalized criteria derived from a `SearchRequest`, return raw results. Internally, this method uses a Collector to fetch pages/data and parses platform-specific structure into `RawListing` objects — it does not return platform-native shapes.
-
-`RawListing` is intentionally looser than `Apartment` (it's pre-normalization) but still a shared shape across all connectors, so the Analysis Engine ([07_Analysis_Engine.md](07_Analysis_Engine.md)) has one input contract regardless of platform.
+`RawListing` is intentionally looser than `Apartment` (it's pre-normalization) but still a shared shape across all connectors, so the Analysis Engine ([07_Analysis_Engine.md](07_Analysis_Engine.md)) has one input contract regardless of platform. This is unchanged by the SDK — `ConnectorResult.listings` is still `list[RawListing]`.
 
 ## Image Extraction (Principle: "image extraction")
 
@@ -35,10 +42,16 @@ A connector's `search()` includes image URLs in each `RawListing`. It is the Ana
 
 ## Adding a New Connector
 
-1. Create `src/connectors/<platform_id>.py` implementing the contract in `base.py`
-2. Use `collectors/browser_collector.py` or `http_collector.py` for actual fetching — don't hand-roll fetch logic in the connector
+**See [18_Connector_SDK.md](18_Connector_SDK.md) "How to Build a New Connector" for the
+current, authoritative steps** (subclass `BaseConnector`, implement four hooks,
+`@register_connector`, certification tests). Summary:
+
+1. Create `src/connectors/<platform_id>.py` subclassing `BaseConnector`
+2. `_collect()`'s default uses `collectors/browser_collector.py`; override it for
+   `collectors/http_collector.py` instead — don't hand-roll fetch logic in the connector
 3. Register the platform in `discovery/platform_registry.py` (see [05_Platform_Discovery.md](05_Platform_Discovery.md))
-4. Add a test in `tests/connectors/test_<platform_id>.py`
+4. Add a test in `tests/connectors/test_<platform_id>.py`, mixing in the SDK's
+   certification suite (`tests/connectors/sdk/certification.py`)
 5. Log platform-specific findings (rate limits, auth, page structure) in [../notes/Research.md](../notes/Research.md) first, then durable lessons in [../learning/playwright_notes.md](../learning/playwright_notes.md) or a new topic file if warranted
 
 ## Existing Connectors (2026-07-14)
@@ -57,62 +70,41 @@ Every connector must fail gracefully — a broken platform must not crash the wh
 
 Continue with partial results rather than aborting the whole `SearchRequest` — Principle 1 ("never lose information") argues against discarding whatever platforms *did* succeed. Proven in `tests/core/test_agent.py::test_a_broken_connector_does_not_crash_the_whole_run`, which registers a platform pointing at a nonexistent connector module alongside a working one and confirms the working platform's results still come through.
 
-## Connector SDK (v2.0, designed — not yet implemented)
+## Connector SDK (v2.0 Step 5, live — full detail in [18_Connector_SDK.md](18_Connector_SDK.md))
 
-**Problem this solves:** `demo_platform.py` and `demo_platform_two.py` (v1.1) each
-independently implement the same three-step sequence — fetch via `BrowserCollector`,
-save the raw page via `raw_page_store`, then parse. That's not platform-specific logic;
-it's boilerplate duplicated once per connector, which is exactly what "a new connector
-should require minimal code" says shouldn't happen once there are more than two.
+The problem this solves is exactly what was sketched here on 2026-07-14: `demo_platform.py`/
+`demo_platform_two.py` each independently implemented the same fetch -> save -> parse
+sequence — boilerplate, not platform-specific logic. What actually got built in Step 5
+is considerably more than this original sketch planned, because the mission's own scope
+grew in the meantime (a full Factory/Registry/plugin framework, not just a template
+method): `src/connectors/sdk/` now holds `BaseConnector`, `ConnectorFactory`,
+`ConnectorRegistry`, `ConnectorMetadata`, `ConnectorCapabilities`, `ConnectorResult`,
+`ConnectorValidator`, `ConnectorConfiguration`, and a `ConnectorException` hierarchy.
 
-**Design: `BaseConnector` as a template method.** `connectors/base.py` grows from a bare
-`ABC` with one abstract method into a class that implements `search()` itself, calling
-out to smaller hooks that subclasses provide:
+Two differences from this original sketch, both changed for good reason:
 
-```
-class BaseConnector(ABC):
-    platform_id: str
+- **`build_url`/`parse` split into `build_url`/`parse`/`normalize`** (three hooks, not
+  two) — `parse()` now returns platform-native records (BeautifulSoup elements, JSON
+  entries, ...) and `normalize()` shapes exactly one into a `RawListing`. This is what
+  actually makes "future APIs and non-HTML sources" (the mission's explicit ask) clean:
+  a JSON/XML/CSV connector's `parse()` just returns a different kind of list, and
+  `normalize()` is the only method that changes shape.
+- **The static `_text`/`_number`/`_attr` extraction helpers sketched here were not
+  built.** The `parse`/`normalize` split above already removes the actual duplication
+  between the two reference connectors; a shared BeautifulSoup-specific helper module
+  would only serve HTML connectors specifically and wasn't needed to eliminate real
+  duplication — can be added later if a third HTML-based connector shows the same
+  selector-handling pattern repeating.
 
-    def search(self, criteria: dict) -> list[RawListing]:
-        # Implemented ONCE, here — not per connector:
-        url = self.build_url(criteria)
-        html = self.fetch(url)
-        raw_page_store.save_page(self.platform_id, html)   # every connector gets this for free
-        return self.parse(html)
-
-    def fetch(self, url: str) -> str:
-        # Default: BrowserCollector. A connector for a platform with a real API
-        # overrides this to use http_collector instead — one method, not a
-        # parallel class hierarchy.
-        with BrowserCollector() as browser:
-            return browser.fetch(url)
-
-    @abstractmethod
-    def build_url(self, criteria: dict) -> str: ...   # the ONE genuinely platform-specific thing
-
-    @abstractmethod
-    def parse(self, html: str) -> list[RawListing]: ...  # the OTHER genuinely platform-specific thing
-```
-
-A new connector subclass implements exactly two methods (`build_url`, `parse`) — fetching
-and raw-page persistence are inherited, not rewritten. `demo_platform.py`/
-`demo_platform_two.py` migrate to this base with no behavior change (their `build_url`
-becomes "return the fixture's `file://` URI, ignore criteria" — unchanged from what they
-do today, just relocated out of `search()`).
-
-**Extraction helpers.** `base.py` also gains small static helpers used by every `parse()`
-implementation today via repeated BeautifulSoup calls — `_text(element, selector)`,
-`_number(element, selector)`, `_attr(element, selector, attribute)` — each wrapping the
-"find element, get text/attribute, handle missing gracefully" pattern currently
-duplicated across both demo connectors' `_parse()` methods.
-
-**What stays exactly the same:** the `Connector` name is kept as an alias for
-`BaseConnector` (or `BaseConnector` replaces it directly — an implementation-time
-choice, not an architecture one) so `core/agent.py`'s `CONNECTOR = <Subclass>` /
-`isinstance` expectations don't change. The Collector layer (`browser_collector.py`,
-`http_collector.py`, `image_collector.py`, `raw_page_store.py`) is unchanged — the SDK
-calls the same collectors, just from inside `BaseConnector` instead of from each
-connector module.
+**What stays exactly the same:** the Collector layer (`browser_collector.py`,
+`http_collector.py`, `image_collector.py`, `raw_page_store.py`) is unchanged — the SDK's
+default `BaseConnector._collect()` calls `BrowserCollector` exactly as before, just from
+inside the base class instead of from each connector module. The old `Connector` ABC
+(kept as a possible alias in this sketch) was instead removed outright in the actual
+implementation — nothing needed it once `core/agent.py` was updated to use
+`ConnectorFactory` instead of a `module.CONNECTOR` attribute lookup. See
+[18_Connector_SDK.md](18_Connector_SDK.md) for the complete architecture, lifecycle,
+and how-to-build-a-new-connector guide.
 
 ## Image Management (v2.0, designed — not yet implemented)
 

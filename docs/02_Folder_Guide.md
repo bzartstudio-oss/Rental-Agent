@@ -58,11 +58,24 @@ src/
     known_platforms.py             # seed candidate list — see 05_Platform_Discovery.md
   connectors/
     __init__.py
-    base.py                      # v2.0: BaseConnector template method (fetch+save+parse) — see
-                                   # 06_Connector_Framework.md "Connector SDK" [v2.0, designed]
+    base.py                      # RawListing only — the old Connector ABC was removed in
+                                   # v2.0 Step 5, replaced by sdk/base_connector.py
+    sdk/                           # [v2.0 Step 5, live — new package] the Connector SDK &
+                                    # Plugin Framework — see 18_Connector_SDK.md
+      __init__.py                   # public API re-exports (incl. ConnectorHealth, which
+                                      # actually lives in src/knowledge/models.py)
+      exceptions.py                  # ConnectorException hierarchy
+      metadata.py                     # ConnectorMetadata, ConnectorCapabilities
+      configuration.py                 # ConnectorConfiguration
+      result.py                         # ConnectorResult
+      validator.py                       # ConnectorValidator, ValidationResult/Warning
+      registry.py                         # ConnectorRegistry, register_connector decorator
+      factory.py                           # ConnectorFactory — the only sanctioned way
+                                             # to obtain a connector instance
+      base_connector.py                      # BaseConnector — the template method
     README.md                     # orientation + link to 06_Connector_Framework.md
-    demo_platform.py               # reference/demo connector — migrates to BaseConnector [v2.0]
-    demo_platform_two.py            # second reference connector — migrates to BaseConnector [v2.0]
+    demo_platform.py               # reference/demo connector — rebuilt on BaseConnector [v2.0 Step 5]
+    demo_platform_two.py            # second reference connector — rebuilt on BaseConnector [v2.0 Step 5]
     fixtures/
       demo_platform/listings.html, images/
       demo_platform_two/listings.html, images/

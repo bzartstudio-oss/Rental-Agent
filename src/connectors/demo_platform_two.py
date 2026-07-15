@@ -7,56 +7,62 @@ required zero changes to analyzers/, ranking/, storage/, or services/ — see
 docs/01_System_Architecture.md "The Independence Guardrail".
 
 Not a real rental platform, same as demo_platform.py — see that module's docstring.
+
+v2.0 Step 5 — rebuilt on `src.connectors.sdk.BaseConnector`, same as demo_platform.py.
+Proves the SDK itself isolates platform-specific parsing the same way the original
+Connector contract did: only `build_url`/`parse`/`normalize`/`connector_info` differ
+between this file and demo_platform.py.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
-from src.collectors import raw_page_store
-from src.collectors.browser_collector import BrowserCollector
-from src.connectors.base import Connector, RawListing
+from src.connectors.base import RawListing
+from src.connectors.sdk import BaseConnector, ConnectorMetadata, register_connector
+from src.search.search_request import SearchRequest
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "demo_platform_two" / "listings.html"
 
 
-class DemoPlatformTwoConnector(Connector):
+@register_connector
+class DemoPlatformTwoConnector(BaseConnector):
     platform_id = "demo_platform_two"
 
-    def search(self, criteria: dict) -> list[RawListing]:
-        with BrowserCollector() as browser:
-            html = browser.fetch(_FIXTURE_PATH.as_uri())
+    def build_url(self, request: SearchRequest) -> str:
+        return _FIXTURE_PATH.as_uri()
 
-        raw_page_store.save_page(self.platform_id, html)
+    def parse(self, raw_response: str) -> list[Tag]:
+        soup = BeautifulSoup(raw_response, "lxml")
+        return soup.select(".row")
 
-        return self._parse(html)
+    def normalize(self, raw_record: Tag) -> RawListing:
+        image_urls = [
+            (_FIXTURE_PATH.parent / img["src"]).resolve().as_uri() for img in raw_record.select(".pic")
+        ]
+        return RawListing(
+            platform_listing_id=raw_record["data-id"],
+            title=raw_record.select_one(".name").get_text(strip=True),
+            price=float(raw_record.select_one(".rent").get_text(strip=True)),
+            url=raw_record.select_one(".link")["href"],
+            bedrooms=float(raw_record.select_one(".beds").get_text(strip=True)),
+            bathrooms=float(raw_record.select_one(".baths").get_text(strip=True)),
+            sqft=float(raw_record.select_one(".area").get_text(strip=True)),
+            address_raw=raw_record.select_one(".loc").get_text(strip=True),
+            status="available",
+            image_urls=image_urls,
+        )
 
-    def _parse(self, html: str) -> list[RawListing]:
-        soup = BeautifulSoup(html, "lxml")
-        listings = []
-
-        for row in soup.select(".row"):
-            image_urls = [
-                (_FIXTURE_PATH.parent / img["src"]).resolve().as_uri() for img in row.select(".pic")
-            ]
-            listings.append(
-                RawListing(
-                    platform_listing_id=row["data-id"],
-                    title=row.select_one(".name").get_text(strip=True),
-                    price=float(row.select_one(".rent").get_text(strip=True)),
-                    url=row.select_one(".link")["href"],
-                    bedrooms=float(row.select_one(".beds").get_text(strip=True)),
-                    bathrooms=float(row.select_one(".baths").get_text(strip=True)),
-                    sqft=float(row.select_one(".area").get_text(strip=True)),
-                    address_raw=row.select_one(".loc").get_text(strip=True),
-                    status="available",
-                    image_urls=image_urls,
-                )
-            )
-
-        return listings
-
-
-CONNECTOR = DemoPlatformTwoConnector
+    def connector_info(self) -> ConnectorMetadata:
+        return ConnectorMetadata(
+            connector_name="demo_platform_two",
+            platform_name="Demo Platform Two (reference/demo connector, not real)",
+            version="1.0.0",
+            supported_countries=["N/A (local fixture)"],
+            supported_cities=["N/A (local fixture)"],
+            supported_rental_types=["apartment"],
+            supports_images=True,
+            supports_availability=True,
+        )

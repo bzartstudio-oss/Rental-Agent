@@ -121,9 +121,20 @@ def best_platforms(conn: sqlite3.Connection, location: str | None = None, limit:
     return ranked[:limit]
 
 
-def connector_health(conn: sqlite3.Connection) -> list[ConnectorHealth]:
+def connector_health(conn: sqlite3.Connection, platform_id: str | None = None) -> list[ConnectorHealth]:
+    """`platform_id=None` (default) returns every platform with at least one
+    observation — unchanged from v2.0 Step 4. `platform_id=<id>` scopes to just that
+    platform, added in v2.0 Step 5 so `BaseConnector.health_check()` can ask for its
+    own health without fetching every other platform's too.
+    """
+    if platform_id is not None:
+        platform = platform_registry.get_platform(conn, platform_id)
+        platforms = [platform] if platform is not None else []
+    else:
+        platforms = platform_registry.list_all_platforms(conn)
+
     results = []
-    for platform in platform_registry.list_all_platforms(conn):
+    for platform in platforms:
         observations = platform_intelligence_repository.get_recent_observations(conn, platform.id, limit=_RECENT_WINDOW)
         if not observations:
             continue

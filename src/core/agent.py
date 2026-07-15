@@ -8,7 +8,6 @@ connectors/, analyzers/, ranking/, services/ respectively.
 
 from __future__ import annotations
 
-import importlib
 import json
 import time
 from dataclasses import dataclass
@@ -16,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.analyzers.engine import process_listings
-from src.connectors.base import Connector
+from src.connectors.sdk import ConnectorException, ConnectorFactory
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
 from src.knowledge import knowledge_service
@@ -62,6 +61,12 @@ class RentalResearchAgent:
         inline, per listing, inside `process_listings()`; Search Memory's completion
         record is written next; Knowledge Engine observations are recorded last,
         since `ranking_usefulness_score` needs ranking to have already happened.
+
+        v2.0 Step 5: connectors are obtained only through `ConnectorFactory` — this
+        method never imports or instantiates a connector class directly — and
+        per-platform timing/success/failure now comes from the `ConnectorResult` each
+        connector returns (measured once, inside `BaseConnector.search()`) rather than
+        `time.perf_counter()` calls here duplicating that measurement.
         """
         started_at = time.perf_counter()
 
@@ -88,18 +93,32 @@ class RentalResearchAgent:
             if not platform.connector_name:
                 continue  # discover() should already filter to connector_available, but stay defensive
 
-            fetch_started = time.perf_counter()
             try:
-                connector = self._load_connector(platform.connector_name)
-                raw_listings = connector.search(request.criteria)
-            except Exception as exc:
+                connector = ConnectorFactory.get(platform)
+            except ConnectorException as exc:
                 errors.append(f"{platform.id}: {exc}")
                 platform_metrics.append(
                     {
                         "platform_id": platform.id,
                         "results_count": 0,
                         "failed": True,
-                        "response_time_ms": int((time.perf_counter() - fetch_started) * 1000),
+                        "response_time_ms": None,
+                        "raw_listings": None,
+                        "parsing_success": False,
+                    }
+                )
+                continue
+
+            result = connector.search(request)
+
+            if not result.success:
+                errors.append(f"{platform.id}: {result.error}")
+                platform_metrics.append(
+                    {
+                        "platform_id": platform.id,
+                        "results_count": 0,
+                        "failed": True,
+                        "response_time_ms": result.response_time_ms,
                         "raw_listings": None,
                         "parsing_success": False,
                     }
@@ -111,16 +130,16 @@ class RentalResearchAgent:
             platform_metrics.append(
                 {
                     "platform_id": platform.id,
-                    "results_count": len(raw_listings),
+                    "results_count": result.results_count,
                     "failed": False,
-                    "response_time_ms": int((time.perf_counter() - fetch_started) * 1000),
-                    "raw_listings": raw_listings,
+                    "response_time_ms": result.response_time_ms,
+                    "raw_listings": result.listings,
                     "parsing_success": True,
                 }
             )
 
             with self._db.transaction() as conn:
-                apartments.extend(process_listings(conn, raw_listings, platform.id, request.id))
+                apartments.extend(process_listings(conn, result.listings, platform.id, request.id))
 
         ranked = self._ranking.rank(apartments, request)
 
@@ -176,16 +195,3 @@ class RentalResearchAgent:
                 )
 
         return SearchRunResult(search_id=request.id, apartments=apartments, report_path=report_path)
-
-    @staticmethod
-    def _load_connector(connector_name: str) -> Connector:
-        connector_module = f"src.connectors.{connector_name}"
-        module = importlib.import_module(connector_module)
-        try:
-            connector_class = module.CONNECTOR
-        except AttributeError:
-            raise ImportError(
-                f"{connector_module} must define CONNECTOR = <ConnectorSubclass> "
-                "for the orchestrator to find it (see docs/06_Connector_Framework.md)"
-            ) from None
-        return connector_class()

@@ -4,6 +4,49 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.6] — 2026-07-15 — Connector SDK & Plugin Framework
+
+The largest sprint of Version 2.0 — a full plugin framework for connectors, not just
+the originally-sketched template method.
+
+### Added
+- `src/connectors/sdk/` — the Connector SDK: `BaseConnector` (template method:
+  `connect -> fetch_listing -> parse -> normalize -> validate -> ConnectorResult`),
+  `ConnectorFactory` (the only sanctioned way to obtain a connector — `core/agent.py`
+  never imports/instantiates one directly), `ConnectorRegistry` (self-registration via
+  `@register_connector`), `ConnectorMetadata`/`ConnectorCapabilities` (declarative
+  coverage + capability discovery), `ConnectorConfiguration`, `ConnectorValidator`
+  (structured, non-fatal-by-default field-completeness warnings), and a
+  `ConnectorException` hierarchy (`ConnectorConnectionError`, `ConnectorParsingError`,
+  `ConnectorValidationError`, `ConnectorConfigurationError`).
+- `docs/18_Connector_SDK.md` — architecture, lifecycle, how to build a new connector,
+  best practices, certification requirements. (The mission asked for `docs/17_...`;
+  `17` was already taken by Search Memory — used the next free number.)
+- `tests/connectors/sdk/certification.py` — a reusable `ConnectorCertificationMixin`
+  any connector's test file can mix in to certify SDK compliance.
+- 54 new tests (256 total): SDK unit tests, a template-method test suite (scripted
+  fake connectors), certification tests for both reference connectors, and
+  registry/factory performance tests with hundreds of registered connectors.
+
+### Changed
+- `demo_platform.py`/`demo_platform_two.py` rebuilt on `BaseConnector` — each now
+  implements exactly `build_url`/`parse`/`normalize`/`connector_info` instead of one
+  `search()` method that duplicated the same fetch->save->parse sequence.
+- `core/agent.py`: connectors obtained only via `ConnectorFactory.get(platform)`; the
+  old `_load_connector`/`Connector` ABC removed (nothing needed the `module.CONNECTOR`
+  attribute convention once the Factory existed). Per-platform timing/success/failure
+  now comes from each connector's own `ConnectorResult`, removing a second, redundant
+  `time.perf_counter()` measurement in the orchestrator.
+- `knowledge_service.connector_health()` gained an optional `platform_id` filter
+  (backward-compatible, defaults to the old all-platforms behavior) so
+  `BaseConnector.health_check()` can ask for just its own platform's health.
+- `connectors/base.py` now holds only `RawListing` — completely unchanged in shape;
+  every connector, regardless of source format, still produces this one shape.
+
+### Not redefined (reused instead)
+- `ConnectorHealth` is `src.knowledge.models.ConnectorHealth` (v2.0 Step 4), re-exported
+  from the SDK, not a second competing class.
+
 ## [2.0.5] — 2026-07-15 — Architecture Cleanup
 
 A small, explicitly-scoped cleanup pass following an architecture review (no blockers

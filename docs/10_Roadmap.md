@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–4 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), and the Knowledge Engine (Step 4) — **plus an architecture cleanup pass (Step 4.5, 200 tests passing)** before Step 5 begins. Steps 5–7 (Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–5 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), and the Connector SDK & Plugin Framework (Step 5, 256 tests passing). Steps 6–7 (Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -276,7 +276,43 @@ self-contained, ending with the one piece that has an unresolved external depend
    tests) — no behavior changed, only names, an index, and documentation.
 5. **Connector SDK** (`BaseConnector` template method) — independent of 2–4, could be
    done in parallel; migrate `demo_platform.py`/`demo_platform_two.py` onto it as proof,
-   same way Phase 7 proved the original Connector contract.
+   same way Phase 7 proved the original Connector contract. **Done, 2026-07-15
+   (v2.0 Step 5).** Grew well beyond the original template-method sketch into a full
+   plugin framework: new `src/connectors/sdk/` package — `BaseConnector` (template
+   method: `connect -> fetch_listing -> parse -> normalize -> validate ->
+   ConnectorResult`), `ConnectorFactory` (the only sanctioned way to obtain a
+   connector — `core/agent.py` no longer imports connector modules itself),
+   `ConnectorRegistry` (self-registration via `@register_connector`, importing
+   `src.connectors.<name>` on first lookup), `ConnectorMetadata`/`ConnectorCapabilities`
+   (declarative coverage + capability discovery), `ConnectorConfiguration`,
+   `ConnectorValidator` (structured, non-fatal-by-default field-completeness
+   warnings), and a `ConnectorException` hierarchy
+   (`ConnectorConnectionError`/`ParsingError`/`ValidationError`/`ConfigurationError`).
+   `ConnectorHealth` was **not** redefined — it's `src.knowledge.models.ConnectorHealth`
+   (Step 4), reused via `BaseConnector.health_check()`, avoiding two competing
+   definitions of the same thing.
+
+   Both reference connectors (`demo_platform`, `demo_platform_two`) were rebuilt on
+   `BaseConnector` — each now implements exactly four small hooks
+   (`build_url`/`parse`/`normalize`/`connector_info`) instead of one `search()` method
+   that duplicated the same fetch->save->parse sequence. `core/agent.py`'s
+   per-platform loop now reads `ConnectorResult.success`/`.listings`/`.response_time_ms`
+   uniformly instead of measuring timing itself and catching a bare `Exception` around
+   a dynamically-imported module — the old `_load_connector`/`Connector` ABC were
+   removed outright (nothing needed them once the Factory existed). New
+   `docs/18_Connector_SDK.md` (the mission asked for `docs/17_...`, already taken by
+   Search Memory — used the next free number instead) covers architecture, lifecycle,
+   how to build a new connector, best practices, and certification requirements; a
+   reusable `tests/connectors/sdk/certification.py` mixin lets any connector's own test
+   file certify SDK compliance for free, which both reference connectors now do.
+
+   54 new tests (256 total: 202 existing untouched + 54 new — SDK unit tests, a
+   template-method test suite using scripted fake connectors, certification tests,
+   and registry/factory performance tests with hundreds of registered connectors).
+   Verified against the real dev database: ran the CLI through the new
+   `ConnectorFactory` -> `BaseConnector` path end-to-end and confirmed identical
+   results (6 apartments from the same 2 platforms) plus correct Knowledge Engine
+   observations, exactly as before the refactor.
 6. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–5;
    migrate the 5 existing filters first (behavior-preserving refactor), then add one or
    two real filters per new category as *examples* of the pattern working, not all ~25

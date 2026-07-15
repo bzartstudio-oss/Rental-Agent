@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
 from src.ranking.ranking_engine import RankingEngine
 from src.search.search_request import SearchRequest
+from src.search_memory import search_memory_service
 from src.services.report_generator import generate_report
 from src.storage import search_repository
 from src.storage.database import Database
@@ -48,8 +50,13 @@ class RentalResearchAgent:
         A platform whose connector raises is skipped, not fatal — one broken/unreachable
         site must not discard listings other platforms did return successfully
         (resolves the open question in docs/06_Connector_Framework.md this way for V1;
-        Principle 1 argues against throwing away whatever *did* succeed).
+        Principle 1 argues against throwing away whatever *did* succeed). Its id and
+        the raised exception are still recorded, in Search Memory's run stats (v2.0
+        Step 3) — being skipped for ranking purposes isn't the same as the failure
+        being invisible.
         """
+        started_at = time.perf_counter()
+
         with self._db.transaction() as conn:
             search_repository.insert_search_request(
                 conn,
@@ -62,6 +69,10 @@ class RentalResearchAgent:
             )
 
         platforms = self._discovery.discover(request)
+        discovered_platform_ids = [platform.id for platform in platforms]
+        searched_platform_ids: list[str] = []
+        connector_versions: dict[str, str | None] = {}
+        errors: list[str] = []
 
         apartments: list[Apartment] = []
         for platform in platforms:
@@ -71,8 +82,12 @@ class RentalResearchAgent:
             try:
                 connector = self._load_connector(platform.connector_name)
                 raw_listings = connector.search(request.criteria)
-            except Exception:
+            except Exception as exc:
+                errors.append(f"{platform.id}: {exc}")
                 continue
+
+            searched_platform_ids.append(platform.id)
+            connector_versions[platform.id] = platform.connector_version
 
             with self._db.transaction() as conn:
                 apartments.extend(process_listings(conn, raw_listings, platform.id, request.id))
@@ -95,6 +110,20 @@ class RentalResearchAgent:
                 )
 
         report_path = generate_report(self._db, request.id, output_dir=self._output_dir)
+        execution_time_ms = int((time.perf_counter() - started_at) * 1000)
+
+        with self._db.transaction() as conn:
+            search_memory_service.record_completed_search(
+                conn,
+                request,
+                execution_time_ms=execution_time_ms,
+                discovered_platform_ids=discovered_platform_ids,
+                searched_platform_ids=searched_platform_ids,
+                connector_versions=connector_versions,
+                errors=errors,
+                apartment_count=len(apartments),
+                report_path=str(report_path),
+            )
 
         return SearchRunResult(search_id=request.id, apartments=apartments, report_path=report_path)
 

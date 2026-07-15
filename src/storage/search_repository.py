@@ -13,10 +13,12 @@ from src.storage.models import SearchRequestRecord, SearchResultEntry, iso, pars
 
 def insert_search_request(conn: sqlite3.Connection, request: SearchRequestRecord) -> None:
     """Writes only the v1.1 columns (what was asked) — the v2.0 Search Memory columns
-    (what happened) start NULL and are meant to be filled in later via an UPDATE once a
-    run completes (docs/03_Data_Model.md's one deliberate exception to insert-only). That
-    update isn't built this sprint (no code calls it yet), so this function doesn't
-    attempt to guess values for them.
+    (what happened) start NULL and are filled in later via an UPDATE once a run
+    completes (docs/03_Data_Model.md's one deliberate exception to insert-only). That
+    UPDATE is `storage/search_memory_repository.py::complete_search_execution`, called by
+    `src/search_memory/search_memory_service.py::record_completed_search` from
+    `RentalResearchAgent.run()` (v2.0 Step 3) — this function still only ever writes the
+    columns known at submission time.
     """
     conn.execute(
         "INSERT INTO search_requests (id, created_at, label, criteria_json) VALUES (?, ?, ?, ?)",
@@ -26,15 +28,22 @@ def insert_search_request(conn: sqlite3.Connection, request: SearchRequestRecord
 
 def get_search_request(conn: sqlite3.Connection, search_id: str) -> SearchRequestRecord | None:
     row = conn.execute("SELECT * FROM search_requests WHERE id = ?", (search_id,)).fetchone()
-    if row is None:
-        return None
+    return row_to_search_request(row) if row is not None else None
+
+
+def row_to_search_request(row: sqlite3.Row) -> SearchRequestRecord:
+    """Shared with storage/search_memory_repository.py (v2.0 Step 3), which reads
+    `search_requests` rows for history/comparison queries and needs the exact same
+    mapping — kept in one place so the two never drift apart.
+    """
     return SearchRequestRecord(
         id=row["id"],
         created_at=parse_iso(row["created_at"]),
         label=row["label"],
         criteria_json=row["criteria_json"],
-        # v2.0 (migration 0001) — Search Memory columns, all nullable; None until a
-        # future sprint's run-stats UPDATE actually populates them.
+        # v2.0 (migration 0001) — Search Memory columns, all nullable until
+        # search_memory_repository.complete_search_execution() (v2.0 Step 3) fills them
+        # in once a run finishes.
         execution_time_ms=row["execution_time_ms"],
         discovered_platform_ids=json.loads(row["discovered_platform_ids_json"])
         if row["discovered_platform_ids_json"]

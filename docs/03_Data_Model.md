@@ -1,8 +1,9 @@
 # 03 — Data Model
 
 Status: **v2.0 schema designed (2026-07-14); migration framework + schema live since Sprint
-V2.0.1; `apartment_change_log` and `apartment_image_events` have real read/write logic as
-of v2.0 Step 2 (2026-07-14).** This doc reflects the target schema for the Autonomous
+V2.0.1; `apartment_change_log`/`apartment_image_events` live since v2.0 Step 2;
+`search_observed_apartments` and all nine `search_requests` v2.0 columns live since
+v2.0 Step 3 (2026-07-14).** This doc reflects the target schema for the Autonomous
 Rental Intelligence Platform upgrade (see [00_Project_Vision.md](00_Project_Vision.md)
 "Mission"). Tables/columns marked **(v1.1, live)** exist in `storage/schema.sql` today.
 Tables/columns marked **(v2.0, designed)** are schema-only so far (present in the
@@ -153,7 +154,7 @@ changes between executions" requirement.
 | `search_id` | TEXT FK → `search_requests.id` | Which search detected the change |
 | `observed_at` | TEXT (ISO 8601) | — |
 
-### `search_observed_apartments` — new (v2.0, designed)
+### `search_observed_apartments` — new (v2.0 Step 3, live)
 
 Every apartment observed during a search — the **full** set, not just the ranked/filtered
 subset in `search_results`. Exists specifically so run-over-run comparison
@@ -172,10 +173,12 @@ actually gone from the platform, and only this table can tell the two apart.
 One row per (search, apartment) — written by the Analysis Engine for every listing it
 processes in a run, regardless of whether that apartment later survives ranking/filtering.
 
-### `search_requests` — extended (v1.1 live + v2.0 designed columns)
+### `search_requests` — extended (v1.1 live + v2.0 Step 3 live columns)
 
 v2.0 is what turns this into **Search Memory** (requirement 3) — the record of a search
-grows from "what was asked" (v1.1) to "what was asked and what happened."
+grows from "what was asked" (v1.1) to "what was asked and what happened." All nine
+columns below are now filled in by `storage/search_memory_repository.py::complete_search_execution`,
+called from `RentalResearchAgent.run()` once a search finishes (v2.0 Step 3).
 
 | Column | Type | Status | Notes |
 |---|---|---|---|
@@ -193,7 +196,7 @@ grows from "what was asked" (v1.1) to "what was asked and what happened."
 | `report_path` | TEXT, nullable | **v2.0** | Where the generated report landed |
 | `runtime_stats_json` | TEXT (JSON), nullable | **v2.0** | Free-form bag for anything not worth its own column yet (per-platform timing breakdown, error messages) — same escape-hatch role `notes` plays elsewhere |
 
-All eight new columns are nullable and `NULL` until `run()` completes — a row is inserted
+All nine new columns are nullable and `NULL` until `run()` completes — a row is inserted
 with just the v1.1 columns at submission time (unchanged), then updated once execution
 finishes. This is a rare, deliberate exception to "never `UPDATE`, only `INSERT`": these
 columns describe *this run's own execution*, not an external fact that could have

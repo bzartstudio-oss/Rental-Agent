@@ -5,7 +5,7 @@ from pathlib import Path
 
 from src.analyzers import engine
 from src.connectors.base import RawListing
-from src.storage import apartment_history_repository, apartment_repository
+from src.storage import apartment_history_repository, apartment_repository, search_memory_repository
 from src.storage.database import Database
 from tests.support import isolated_collectors
 
@@ -231,6 +231,45 @@ class AnalysisEngineTests(unittest.TestCase):
             events = apartment_history_repository.get_image_events(conn, apartment.id)
 
         self.assertEqual(events, [])
+
+    def test_new_apartment_is_recorded_in_search_observed_apartments(self) -> None:
+        with self.db.transaction() as conn:
+            apartment = engine.process_listing(conn, self._raw(), "test_platform", search_id="search-1")
+
+        with self.db.transaction() as conn:
+            observed_ids = search_memory_repository.get_observed_apartment_ids(conn, "search-1")
+
+        self.assertEqual(observed_ids, {apartment.id})
+
+    def test_reobservation_adds_its_own_search_observed_apartments_row(self) -> None:
+        with self.db.transaction() as conn:
+            apartment = engine.process_listing(conn, self._raw(), "test_platform", search_id="search-1")
+
+        with self.db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO search_requests (id, created_at, criteria_json) VALUES (?, ?, ?)",
+                ("search-2", datetime.now(timezone.utc).isoformat(), "{}"),
+            )
+            engine.process_listing(conn, self._raw(), "test_platform", search_id="search-2")
+
+        with self.db.transaction() as conn:
+            first_ids = search_memory_repository.get_observed_apartment_ids(conn, "search-1")
+            second_ids = search_memory_repository.get_observed_apartment_ids(conn, "search-2")
+
+        # append-only — both searches keep their own observation of the same apartment
+        self.assertEqual(first_ids, {apartment.id})
+        self.assertEqual(second_ids, {apartment.id})
+
+    def test_no_search_observed_row_without_a_search_id(self) -> None:
+        with self.db.transaction() as conn:
+            apartment = engine.process_listing(conn, self._raw(), "test_platform")  # no search_id
+
+        with self.db.transaction() as conn:
+            observed = apartment_history_repository.get_change_log(conn, apartment.id)  # sanity: apartment exists
+            self.assertTrue(observed)
+
+        # search_observed_apartments.search_id is NOT NULL — nothing to query against
+        # without one, so this only asserts process_listing() didn't raise.
 
 
 if __name__ == "__main__":

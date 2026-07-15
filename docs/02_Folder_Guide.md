@@ -92,6 +92,16 @@ src/
     history_service.py                                # write (record_new_apartment/record_reobservation) +
                                                          # read (latest/previous version, timelines) — no DB
                                                          # state of its own beyond the `conn` each call takes
+  search_memory/                                  # [v2.0 Step 3, live — new package] Search Memory & Comparison Engine
+    __init__.py
+    models.py                                       # SearchExecution/SearchComparison/SearchStatistics/
+                                                       # SearchTimeline + the small Apartment*Change dataclasses
+    comparison.py                                    # pure: diff_apartment_sets, platform_coverage_change,
+                                                       # search_quality
+    search_memory_service.py                          # write (record_completed_search) + read (latest_search/
+                                                         # search_history/search_timeline/compare_searches/
+                                                         # average_execution_time/average_apartment_count/
+                                                         # search_statistics)
   knowledge/                                    # [v2.0, designed — new package] see 16_Knowledge_Engine.md
     __init__.py
     engine.py                                     # records platform_performance_observations,
@@ -110,8 +120,11 @@ src/
                                                 # mark_image_not_current
     apartment_history_repository.py             # [v2.0 Step 2, live] apartment_change_log,
                                                   # apartment_image_events — data access only
-    search_repository.py                       # search_requests / search_results; v2.0: also
-                                                 # search_observed_apartments, run-stats update
+    search_repository.py                       # search_requests / search_results; also exposes
+                                                 # row_to_search_request(), shared with the module below
+    search_memory_repository.py                  # [v2.0 Step 3, live] search_observed_apartments,
+                                                    # complete_search_execution (the run-stats UPDATE),
+                                                    # find_previous_search, get_search_history
     knowledge_repository.py                      # knowledge_entries
     platform_intelligence_repository.py            # [v2.0, designed] platform_performance_observations
                                                      # + rollup writes — see 16_Knowledge_Engine.md

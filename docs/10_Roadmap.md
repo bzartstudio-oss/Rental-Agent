@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Step 1 (Migration Framework, Sprint V2.0.1) and Step 2 (Apartment History Engine) are done** — `apartment_change_log` and `apartment_image_events` now have real read/write logic (122 tests passing). Steps 3–7 (Search Memory, Knowledge Engine, Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–3 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), and Search Memory & Comparison Engine (Step 3, 156 tests passing). Steps 4–7 (Knowledge Engine, Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -173,6 +173,38 @@ self-contained, ending with the one piece that has an unresolved external depend
 3. **Search Memory** (`search_observed_apartments`, `search_requests` run-stats columns,
    run-over-run comparison) — needed before Knowledge Engine, since Knowledge Engine
    observations are keyed by `search_id` and conceptually "when did this search finish."
+   **Done, 2026-07-14 (v2.0 Step 3).** New `src/search_memory/` package (`models.py`'s
+   `SearchExecution`/`SearchComparison`/`SearchStatistics`/`SearchTimeline`,
+   `comparison.py`'s pure `diff_apartment_sets`/`platform_coverage_change`/
+   `search_quality`, `search_memory_service.py`'s write-side
+   `record_completed_search` + read-side `latest_search`/`search_history`/
+   `search_timeline`/`compare_searches`/`average_execution_time`/
+   `average_apartment_count`/`search_statistics`) plus new
+   `storage/search_memory_repository.py`. `RentalResearchAgent.run()` now times
+   itself, tracks discovered/searched platform ids and connector exceptions, and calls
+   `record_completed_search()` after report generation — automatically, for every run.
+   `analyzers/engine.py` now writes a `search_observed_apartments` row for every
+   listing processed (new capability; Step 2 didn't touch this table). 34 new tests
+   (156 total: 122 existing untouched + 34 new).
+
+   **A real bug found and fixed, not just designed around**: the originally-designed
+   "changed since the previous run" comparison used a raw `observed_at` timestamp
+   window, which broke the moment it ran against the real pipeline (not hand-picked
+   test timestamps) — a search's own initial-observation writes happen strictly after
+   its `SearchRequest.created_at` (processing takes real time), so they fell inside the
+   *next* search's comparison window and were wrongly counted as changes. Fixed by
+   bounding the comparison by `search_id` identity first, falling back to timestamp
+   only for entries outside the two searches being compared. Caught by running the
+   real orchestrator twice against the real `demo_platform` connector and seeing every
+   apartment falsely reported as "changed" on an unchanged second run — full writeup
+   in `docs/17_Search_Memory.md` and `learning/architecture_notes.md`.
+
+   Verified against the real dev database, not just tests: ran the CLI twice
+   back-to-back (second run correctly reported 0 new/removed/changed against 12
+   accumulated `search_observed_apartments` rows across both runs), then edited
+   `demo_platform`'s fixture price, ran a third time, and confirmed
+   `search_memory_service.compare_searches()` reported the exact real price delta
+   before reverting the fixture.
 4. **Knowledge Engine + Platform Intelligence rollups** — depends on Search Memory's
    `search_id`/timing being solid; this is the "self-improving" mechanism, worth landing
    before more platforms/connectors get added so every connector built afterward is

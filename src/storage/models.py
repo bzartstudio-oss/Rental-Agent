@@ -179,6 +179,21 @@ class SearchRequestRecord:
 
 
 @dataclass
+class SearchObservedApartment:
+    """Mirrors one row of `search_observed_apartments` (docs/03_Data_Model.md) — added in
+    migration 0001, given real read/write logic in v2.0 Step 3. The **full** set of
+    apartments a search processed, independent of `search_results`' ranked/filtered
+    subset — this is what run-over-run comparison (`src/search_memory/`) diffs, so
+    "removed" means "gone from the platform," not "excluded by this run's filters."
+    """
+
+    search_id: str
+    apartment_id: str
+    observed_at: datetime
+    id: int | None = None
+
+
+@dataclass
 class SearchResultEntry:
     """One ranked apartment within one search run. price_at_search/status_at_search
     are a deliberate snapshot, not a live join — see docs/03_Data_Model.md.

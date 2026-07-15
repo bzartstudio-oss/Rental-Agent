@@ -24,7 +24,7 @@ from src.collectors import image_collector
 from src.connectors.base import RawListing
 from src.history import comparison, history_service
 from src.history.models import ChangeType
-from src.storage import apartment_history_repository, apartment_repository
+from src.storage import apartment_history_repository, apartment_repository, search_memory_repository
 from src.storage.models import (
     Apartment,
     ApartmentAvailabilityHistoryEntry,
@@ -75,6 +75,7 @@ def process_listing(
         )
         history_service.record_new_apartment(conn, apartment, now, search_id)
         _sync_images(conn, apartment.id, raw.image_urls, now, search_id)
+        _record_observed(conn, apartment.id, now, search_id)
         return apartment
 
     price_changed = change_detector.price_changed(existing, fields["current_price"])
@@ -108,6 +109,7 @@ def process_listing(
 
     history_service.record_reobservation(conn, existing, fields, now, search_id)
     _sync_images(conn, existing.id, raw.image_urls, now, search_id)
+    _record_observed(conn, existing.id, now, search_id)
 
     existing.current_price = fields["current_price"]
     existing.current_status = fields["current_status"]
@@ -124,6 +126,19 @@ def process_listings(
     search_id: str | None = None,
 ) -> list[Apartment]:
     return [process_listing(conn, raw, platform_id, search_id) for raw in raw_listings]
+
+
+def _record_observed(conn: sqlite3.Connection, apartment_id: str, now: datetime, search_id: str | None) -> None:
+    """`search_observed_apartments` (v2.0 Step 3, docs/17_Search_Memory.md): the full set
+    of apartments this search actually processed, regardless of whether they later
+    survive ranking/filtering into `search_results` — what Search Memory's run-over-run
+    comparison diffs. Like `apartment_image_events`, `search_id` is `NOT NULL`
+    (an observation only makes sense in the context of the search that made it), so this
+    is skipped — not the rest of the write sequence — when `process_listing()` is called
+    without one (only direct unit tests; the real `RentalResearchAgent` always has one).
+    """
+    if search_id:
+        search_memory_repository.add_observed_apartment(conn, search_id, apartment_id, now)
 
 
 def _sync_images(

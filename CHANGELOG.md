@@ -4,6 +4,48 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.3] — 2026-07-14 — Search Memory & Comparison Engine
+
+Third step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").
+
+### Added
+- `src/search_memory/` — the Search Memory & Comparison Engine: `models.py`
+  (`SearchExecution`, `SearchComparison`, `SearchStatistics`, `SearchTimeline`,
+  `ApartmentPriceChange`, `ApartmentAvailabilityChange`, `PlatformCoverageChange`),
+  `comparison.py` (pure `diff_apartment_sets`, `platform_coverage_change`,
+  `search_quality`), `search_memory_service.py` (`record_completed_search`,
+  `latest_search`, `search_history`, `search_timeline`, `compare_searches`,
+  `average_execution_time`, `average_apartment_count`, `search_statistics`).
+- `storage/search_memory_repository.py` — `search_observed_apartments` data access,
+  `complete_search_execution` (the run-stats completion `UPDATE` on
+  `search_requests`), `find_previous_search`, `get_search_history`.
+- `storage/search_repository.py` gained a shared `row_to_search_request()` helper.
+- `analyzers/engine.py` now writes a `search_observed_apartments` row for every
+  processed listing.
+- `RentalResearchAgent.run()` now times itself, tracks discovered vs. successfully
+  searched platforms and each connector failure's exception message, and calls
+  `record_completed_search()` automatically after report generation — every search
+  now permanently remembers its own full execution, with no manual wiring.
+- 34 new tests (156 total): comparison unit tests, service-level tests (including
+  the run-over-run comparison scenario and repeated-search/append-only regression
+  tests), repository round-trip tests, and a new core-agent integration test file.
+
+### Fixed
+- A real bug in the run-over-run "changed" comparison, found by running the actual
+  CLI twice against the same unchanged data (not just unit tests): the original
+  timestamp-window design counted a search's *own* initial-observation writes as
+  changes relative to itself, since those writes happen strictly after that search's
+  `created_at` (processing takes real time). Fixed by bounding the comparison by
+  `search_id` identity first. See `docs/17_Search_Memory.md` "A Real Bug".
+- A pre-existing doc typo: `docs/03_Data_Model.md` said "eight new columns" for the
+  Search Memory `search_requests` extension; it's nine — corrected.
+
+### Not included (explicitly deferred to later Version 2.0 steps)
+- No Knowledge Engine logic (`platform_performance_observations`, Platform
+  Intelligence rollups) — schema only, as before.
+- No AI or predictive logic anywhere in this engine — every figure is a plain
+  average or set/timestamp comparison over already-stored data.
+
 ## [2.0.2] — 2026-07-14 — Apartment History Engine
 
 Second step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").

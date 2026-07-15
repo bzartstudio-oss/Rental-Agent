@@ -4,6 +4,50 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.2] — 2026-07-14 — Apartment History Engine
+
+Second step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").
+
+### Added
+- `src/history/` — the Apartment History Engine: `models.py` (`Change`/`ChangeType`,
+  the structured comparison result every method below produces), `comparison.py`
+  (pure functions: `compare_price`, `compare_availability`, `compare_title`,
+  `compare_description`, `compare_coordinates`, `compare_images`, `compare_presence`,
+  `summarize_listing_updated`), `history_service.py` (`record_new_apartment`,
+  `record_reobservation`, `latest_version`, `previous_version`, `price_timeline`,
+  `availability_timeline`, `change_timeline`).
+- `storage/apartment_history_repository.py` — data access for `apartment_change_log`
+  and `apartment_image_events` (schema already existed since migration 0001; this adds
+  the first real reads/writes).
+- `storage/apartment_repository.py`: `update_apartment_details` (title/description),
+  `mark_image_not_current`.
+- `connectors/base.py`'s `RawListing` and `analyzers/normalizer.py` gained
+  `description`.
+- `analyzers/engine.py`'s write sequence now also writes `apartment_change_log` rows
+  for title/description changes and runs Image Change Detection — one unified
+  `_sync_images` function replacing the old `_collect_images`, used for both new and
+  re-observed apartments (a new apartment has no prior images, so every URL is
+  naturally "added," in original order — behavior-identical to before).
+- 43 new tests (122 total): comparison unit tests, history-service tests (including a
+  reconstructed-`previous_version` test and a 500-row change-timeline performance
+  test), repository round-trip tests, engine-level regression/integration tests.
+
+### Fixed
+- Nothing was tracking title/description/image changes before this — a listing's
+  title being edited, or a photo being added or removed, was invisible; only its
+  current value was known, with no way to see it change over time. Now every such
+  change is appended to `apartment_change_log`/`apartment_image_events`, never
+  overwritten.
+
+### Not included (explicitly deferred to later Version 2.0 steps)
+- `compare_coordinates` and `compare_presence` ("listing removed"/"listing returned")
+  are implemented and unit-tested but not wired into the pipeline: no connector
+  populates coordinates yet (Step 7), and "removed" needs Search Memory's
+  full-observed-set comparison (Step 3) to mean "gone from the platform" rather than
+  "excluded by this run's filters."
+- No Knowledge Engine logic, no Search Memory (`search_observed_apartments`, run-stats
+  columns) — schema only, as before.
+
 ## [2.0.1] — 2026-07-14 — Migration Framework
 
 First step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").

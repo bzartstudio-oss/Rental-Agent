@@ -22,7 +22,9 @@ from src.analyzers import change_detector, normalizer
 from src.analyzers.deduplicator import find_existing
 from src.collectors import image_collector
 from src.connectors.base import RawListing
-from src.storage import apartment_repository
+from src.history import comparison, history_service
+from src.history.models import ChangeType
+from src.storage import apartment_history_repository, apartment_repository
 from src.storage.models import (
     Apartment,
     ApartmentAvailabilityHistoryEntry,
@@ -38,9 +40,12 @@ def process_listing(
     search_id: str | None = None,
 ) -> Apartment:
     """Normalize one RawListing and write it, following the write sequence in
-    docs/07_Analysis_Engine.md: insert (plus initial history and images) if this
-    (platform_id, platform_listing_id) hasn't been seen before; otherwise update current
-    state and add a history row only for whichever of price/status actually changed.
+    docs/07_Analysis_Engine.md: insert (plus initial history, change-log rows, and
+    images) if this (platform_id, platform_listing_id) hasn't been seen before;
+    otherwise update current state and add a history row only for whichever of
+    price/status/title/description/images actually changed. The Apartment History
+    Engine (src/history/) owns the generic-field (title/description) and image-diff
+    decisions; price/status keep using their pre-existing dedicated history tables.
     """
     fields = normalizer.normalize(raw)
     now = datetime.now(timezone.utc)
@@ -68,7 +73,8 @@ def process_listing(
                 apartment_id=apartment.id, status=apartment.current_status, observed_at=now, search_id=search_id
             ),
         )
-        _collect_images(conn, apartment.id, raw.image_urls, now)
+        history_service.record_new_apartment(conn, apartment, now, search_id)
+        _sync_images(conn, apartment.id, raw.image_urls, now, search_id)
         return apartment
 
     price_changed = change_detector.price_changed(existing, fields["current_price"])
@@ -80,6 +86,9 @@ def process_listing(
         current_price=fields["current_price"],
         current_status=fields["current_status"],
         last_seen_at=now,
+    )
+    apartment_repository.update_apartment_details(
+        conn, apartment_id=existing.id, title=fields["title"], description=fields.get("description")
     )
 
     if price_changed:
@@ -97,8 +106,13 @@ def process_listing(
             ),
         )
 
+    history_service.record_reobservation(conn, existing, fields, now, search_id)
+    _sync_images(conn, existing.id, raw.image_urls, now, search_id)
+
     existing.current_price = fields["current_price"]
     existing.current_status = fields["current_status"]
+    existing.title = fields["title"]
+    existing.description = fields.get("description")
     existing.last_seen_at = now
     return existing
 
@@ -112,23 +126,50 @@ def process_listings(
     return [process_listing(conn, raw, platform_id, search_id) for raw in raw_listings]
 
 
-def _collect_images(conn: sqlite3.Connection, apartment_id: str, image_urls: list[str], now: datetime) -> None:
-    """Only for newly-discovered apartments (V1 scope) — re-observed apartments don't
-    re-download images every search, to avoid piling up duplicate image rows for
-    unchanged photos. Revisit if a platform is found to genuinely change its images
-    over time in a way that matters.
+def _sync_images(
+    conn: sqlite3.Connection, apartment_id: str, image_urls: list[str], now: datetime, search_id: str | None
+) -> None:
+    """Image Change Detection (docs/07_Analysis_Engine.md): diffs the apartment's
+    currently-known (`is_current = 1`) image set against this observation's
+    `image_urls`. Used for both a brand-new apartment (no current images yet, so every
+    URL comes back "added" in original listing order — the same behavior V1 always
+    had) and a re-observation (genuinely new capability in v2.0 Step 2): downloads and
+    inserts any newly-added image, flips any missing one to `is_current = 0` (never
+    deletes the row — Principle 1), and logs an `apartment_image_events` row for each,
+    when a search context is known. `apartment_image_events.search_id` is NOT NULL —
+    logging is skipped (not the download/flip itself) when `search_id` is None, which
+    only happens in tests that call `process_listing` directly without a real search.
     """
-    for index, url in enumerate(image_urls):
-        suffix = Path(url).suffix or ".jpg"
-        filename = f"{index}{suffix}"
-        local_path = image_collector.collect_image(apartment_id, url, filename)
-        apartment_repository.add_image(
-            conn,
-            ApartmentImage(
-                apartment_id=apartment_id,
-                source_url=url,
-                local_path=str(local_path),
-                position=index,
-                downloaded_at=now,
-            ),
-        )
+    current_images = [image for image in apartment_repository.get_images(conn, apartment_id) if image.is_current]
+    old_urls = [image.source_url for image in current_images]
+    current_by_url = {image.source_url: image for image in current_images}
+
+    changes = comparison.compare_images(apartment_id, old_urls, image_urls, now, search_id=search_id)
+
+    position = len(old_urls)
+    for change in changes:
+        if change.change_type == ChangeType.IMAGE_ADDED:
+            url = change.new_value
+            suffix = Path(url).suffix or ".jpg"
+            filename = f"{position}{suffix}"
+            local_path = image_collector.collect_image(apartment_id, url, filename)
+            apartment_repository.add_image(
+                conn,
+                ApartmentImage(
+                    apartment_id=apartment_id,
+                    source_url=url,
+                    local_path=str(local_path),
+                    position=position,
+                    downloaded_at=now,
+                ),
+            )
+            position += 1
+            event_type, event_url = "added", url
+        else:
+            image = current_by_url.get(change.old_value)
+            if image is not None:
+                apartment_repository.mark_image_not_current(conn, image.id)
+            event_type, event_url = "removed", change.old_value
+
+        if search_id:
+            apartment_history_repository.add_image_event(conn, apartment_id, event_type, event_url, search_id, now)

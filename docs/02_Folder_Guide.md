@@ -77,12 +77,21 @@ src/
     normalizer.py                     # RawListing -> Apartment shape; v2.0: also normalizes `description`
     deduplicator.py                    # within-platform duplicate detection (V1); cross-platform is V2
     enricher.py                         # price_per_sqft (computed-on-read) — unchanged by v2.0
-    change_detector.py                   # v2.0: also compares title/description, not just price/status
-    engine.py                             # composes the pipeline's write sequence; v2.0: also calls
-                                            # image-change detection + Deep Analysis Engine
+    change_detector.py                   # price/status comparison only — unchanged by v2.0 Step 2;
+                                           # title/description/images comparison lives in history/ instead
+                                            # (see history_service.py below and learning/architecture_notes.md)
+    engine.py                             # composes the pipeline's write sequence; v2.0 Step 2: also
+                                            # calls the Apartment History Engine + Image Change Detection
     distance.py                             # [v2.0, designed] walking/transit distance — see 07_Analysis_Engine.md
     nearby.py                                # [v2.0, designed] nearby-amenity counts/distances
     scores.py                                 # [v2.0, designed] lifestyle/convenience/location scores
+  history/                                        # [v2.0 Step 2, live — new package] the Apartment History Engine
+    __init__.py
+    models.py                                       # Change / ChangeType — the structured comparison result
+    comparison.py                                    # pure per-field comparison functions -> Change objects
+    history_service.py                                # write (record_new_apartment/record_reobservation) +
+                                                         # read (latest/previous version, timelines) — no DB
+                                                         # state of its own beyond the `conn` each call takes
   knowledge/                                    # [v2.0, designed — new package] see 16_Knowledge_Engine.md
     __init__.py
     engine.py                                     # records platform_performance_observations,
@@ -96,8 +105,11 @@ src/
     database.py                             # SQLite connection/session management
     schema.sql                               # DDL for all tables in 03_Data_Model.md
     models.py                                 # dataclasses mirroring each table
-    apartment_repository.py                   # CRUD + history writes for apartments; v2.0: also
-                                                # apartment_change_log, apartment_image_events
+    apartment_repository.py                   # CRUD + price/availability history + images for apartments;
+                                                # v2.0 Step 2: also update_apartment_details,
+                                                # mark_image_not_current
+    apartment_history_repository.py             # [v2.0 Step 2, live] apartment_change_log,
+                                                  # apartment_image_events — data access only
     search_repository.py                       # search_requests / search_results; v2.0: also
                                                  # search_observed_apartments, run-stats update
     knowledge_repository.py                      # knowledge_entries

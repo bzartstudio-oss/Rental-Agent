@@ -1,11 +1,13 @@
 # 03 — Data Model
 
-Status: **v2.0 schema designed (2026-07-14) — not yet implemented.** This doc reflects the
-target schema for the Autonomous Rental Intelligence Platform upgrade (see
-[00_Project_Vision.md](00_Project_Vision.md) "Mission"). Tables/columns marked **(v1.1,
-live)** exist in `storage/schema.sql` today. Tables/columns marked **(v2.0, designed)**
-are this upgrade's design and have not been written to code yet — see
-[10_Roadmap.md](10_Roadmap.md) "Migration Plan" for how the two states get reconciled.
+Status: **v2.0 schema designed (2026-07-14); migration framework + schema live since Sprint
+V2.0.1; `apartment_change_log` and `apartment_image_events` have real read/write logic as
+of v2.0 Step 2 (2026-07-14).** This doc reflects the target schema for the Autonomous
+Rental Intelligence Platform upgrade (see [00_Project_Vision.md](00_Project_Vision.md)
+"Mission"). Tables/columns marked **(v1.1, live)** exist in `storage/schema.sql` today.
+Tables/columns marked **(v2.0, designed)** are schema-only so far (present in the
+database via migration 0001, but no code writes/reads them yet) — see
+[10_Roadmap.md](10_Roadmap.md) "Implementation Order" for what's live vs. still designed.
 Storage engine unchanged: SQLite, single file at `data/rental_intelligence.db`.
 
 ## The Versioning Principle, Formalized
@@ -105,7 +107,7 @@ Append-only. `id`, `apartment_id` FK, `price`, `observed_at`, `search_id` FK nul
 
 Append-only. `id`, `apartment_id` FK, `status`, `observed_at`, `search_id` FK nullable.
 
-### `apartment_change_log` — new (v2.0, designed)
+### `apartment_change_log` — new (v2.0 Step 2, live)
 
 The generic history table described in "The Versioning Principle" above — catches title,
 description, and any future trackable field without a schema migration.
@@ -137,7 +139,7 @@ Not used for `price`/`status` — those keep their dedicated, more heavily-queri
 | `is_current` | INTEGER (bool) | **v2.0**, default `1` | Whether this image is still present on the listing as of the most recent observation — see `apartment_image_events` below. Never deleted when an image is removed; flipped to `0` instead |
 | `downloaded_at` | TEXT (ISO 8601) | v1.1 | — |
 
-### `apartment_image_events` — new (v2.0, designed)
+### `apartment_image_events` — new (v2.0 Step 2, live)
 
 Append-only log of images appearing/disappearing between searches — the "detect image
 changes between executions" requirement.

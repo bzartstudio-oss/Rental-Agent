@@ -77,6 +77,24 @@ def update_apartment_state(
     )
 
 
+def update_apartment_details(
+    conn: sqlite3.Connection, apartment_id: str, title: str, description: str | None
+) -> None:
+    """Keeps title/description on the current-state row in sync with the latest
+    observation — the v2.0 Step 2 counterpart to `update_apartment_state` (price/
+    status), kept as a separate function rather than folded into it so the pre-existing
+    function's signature (and the tests written against it) don't have to change.
+    Always called on re-observation regardless of whether title/description actually
+    changed (mirrors current_price/current_status always refreshing); whether to also
+    write an `apartment_change_log` row is a separate, conditional decision made by
+    src/history/history_service.py, not this module (docs/01_System_Architecture.md).
+    """
+    conn.execute(
+        "UPDATE apartments SET title = ?, description = ? WHERE id = ?",
+        (title, description, apartment_id),
+    )
+
+
 def get_apartment(conn: sqlite3.Connection, apartment_id: str) -> Apartment | None:
     row = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
     return _row_to_apartment(row) if row else None
@@ -189,6 +207,15 @@ def add_image(conn: sqlite3.Connection, image: ApartmentImage) -> int:
         ),
     )
     return cursor.lastrowid
+
+
+def mark_image_not_current(conn: sqlite3.Connection, image_id: int) -> None:
+    """Flips `is_current` to 0 for an image no longer present on the listing — never
+    deletes the row (Principle 1: the image stays downloaded and queryable). Paired
+    with `apartment_image_events` logging the "removed" event itself; see
+    src/analyzers/engine.py's Image Change Detection.
+    """
+    conn.execute("UPDATE apartment_images SET is_current = 0 WHERE id = ?", (image_id,))
 
 
 def get_images(conn: sqlite3.Connection, apartment_id: str) -> list[ApartmentImage]:

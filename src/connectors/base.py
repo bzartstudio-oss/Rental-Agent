@@ -24,6 +24,10 @@ class RawListing:
     address_raw: str | None = None
     status: str = "available"
     image_urls: list[str] = field(default_factory=list)
+    # v2.0 (migration 0001) — populated only if the platform provides one; None is a
+    # real, honest "no description available" rather than a missing-field bug. See
+    # docs/03_Data_Model.md `apartments.description` and docs/07_Analysis_Engine.md.
+    description: str | None = None
 
 
 class Connector(ABC):

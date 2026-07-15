@@ -25,4 +25,6 @@ def normalize(raw: RawListing) -> dict:
         "bathrooms": raw.bathrooms,
         "sqft": raw.sqft,
         "address_raw": raw.address_raw.strip() if raw.address_raw else None,
+        # v2.0 — required to exist before its changes can be tracked (docs/03_Data_Model.md).
+        "description": raw.description.strip() if raw.description else None,
     }

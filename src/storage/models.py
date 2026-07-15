@@ -121,6 +121,40 @@ class ApartmentImage:
 
 
 @dataclass
+class ApartmentChangeLogEntry:
+    """Mirrors one row of `apartment_change_log` (docs/03_Data_Model.md) — the generic
+    history table for title/description/coordinates and any future free-text/simple
+    field, added in migration 0001 and given real read/write logic in v2.0 Step 2
+    (src/history/). `old_value=None` marks the field's first-ever observation.
+    """
+
+    apartment_id: str
+    field_name: str
+    new_value: str
+    observed_at: datetime
+    old_value: str | None = None
+    search_id: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class ApartmentImageEvent:
+    """Mirrors one row of `apartment_image_events` (docs/03_Data_Model.md) — added in
+    migration 0001, given real read/write logic in v2.0 Step 2. `event` is `"added"` or
+    `"removed"`; `search_id` is NOT NULL in the schema (an image event is always tied to
+    the search run that detected it — unlike price/availability history, which can be
+    written without one).
+    """
+
+    apartment_id: str
+    event: str
+    source_url: str
+    search_id: str
+    observed_at: datetime
+    id: int | None = None
+
+
+@dataclass
 class SearchRequestRecord:
     """The persisted form of a SearchRequest (see search/search_request.py for the
     richer domain object this is built from) — just enough to satisfy Principle 4

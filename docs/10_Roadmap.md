@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Step 1 (Migration Framework, Sprint V2.0.1) is done** — schema and migration mechanism only, no business logic for the 6 new tables yet (79 tests passing). Steps 2–7 (Apartment History, Search Memory, Knowledge Engine, Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Step 1 (Migration Framework, Sprint V2.0.1) and Step 2 (Apartment History Engine) are done** — `apartment_change_log` and `apartment_image_events` now have real read/write logic (122 tests passing). Steps 3–7 (Search Memory, Knowledge Engine, Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -149,8 +149,27 @@ self-contained, ending with the one piece that has an unresolved external depend
 
 1. **Migrations framework + v2.0 schema** (above) — everything else depends on it existing first. **Done, 2026-07-14 (Sprint V2.0.1).**
 2. **Apartment History extensions** (`apartment_change_log`, `apartment_image_events`) —
-   a direct, self-contained extension of the existing, working `analyzers/change_detector.py`
-   and `analyzers/engine.py` write sequence. Low risk, high value, do it early.
+   a direct, self-contained extension of the existing, working `analyzers/engine.py`
+   write sequence. **Done, 2026-07-14 (v2.0 Step 2).** New `src/history/` package
+   (`models.py`'s `Change`/`ChangeType`, `comparison.py`'s pure per-field comparisons,
+   `history_service.py`'s write + read-side timeline/version reconstruction) plus
+   `storage/apartment_history_repository.py`. `RawListing`/`normalizer.py` gained
+   `description`; `apartment_repository.py` gained `update_apartment_details` and
+   `mark_image_not_current`. Image Change Detection is one unified function
+   (`analyzers/engine.py::_sync_images`) used for both new and re-observed apartments.
+   Verified against the real dev database, not just tests: edited `demo_platform`'s
+   fixture title, ran the real CLI, confirmed a real `apartment_change_log` row with
+   correct old/new values, then reverted the fixture and ran again, confirming the
+   reversion was appended as a second row without disturbing the first. 43 new tests
+   (122 total: 79 existing untouched + 43 new). Deliberate scope calls: title/
+   description/coordinates/image comparison logic lives in the new `src/history/`
+   package rather than being split into `analyzers/change_detector.py` as this doc
+   originally sketched (price/status keep using `change_detector.py` unchanged);
+   `compare_coordinates` and `compare_presence` ("listing removed"/"listing returned")
+   are implemented and unit-tested but not wired into the pipeline, since nothing
+   populates coordinates yet (Step 7) and "removed" requires Search Memory's
+   full-observed-set comparison (Step 3) to mean what the mission intends rather than
+   "excluded by this run's filters." Full writeup in `learning/architecture_notes.md`.
 3. **Search Memory** (`search_observed_apartments`, `search_requests` run-stats columns,
    run-over-run comparison) — needed before Knowledge Engine, since Knowledge Engine
    observations are keyed by `search_id` and conceptually "when did this search finish."

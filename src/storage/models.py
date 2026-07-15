@@ -285,3 +285,37 @@ class RawCapture:
     captured_at: datetime
     apartment_id: str | None = None  # null until the Analysis Engine resolves this capture
     id: int | None = None
+
+
+@dataclass
+class FilterDefinitionRecord:
+    """Mirrors one row of `filter_definitions` (migration 0001) — designed for the
+    Dynamic Filter Engine and left unused until v2.5 Step 9 gave it real read/write
+    logic. One row per registered `BaseFilter`, kept in sync via
+    `filter_engine.sync_filter_definitions()`.
+    """
+
+    key: str
+    display_name: str
+    category: str
+    value_type: str
+    applicable_rental_types: list[str]
+    created_at: datetime
+    description: str | None = None
+
+
+@dataclass
+class FilterExecutionHistoryEntry:
+    """Mirrors one row of `filter_execution_history` (migration 0005, v2.5 Step 9) —
+    one row per `FilterEngine.run()` call, append-only like every other history table
+    in this system.
+    """
+
+    search_id: str
+    filter_set: dict
+    total_apartments: int
+    matched_count: int
+    statistics: dict
+    recorded_at: datetime
+    execution_time_ms: int | None = None
+    id: int | None = None

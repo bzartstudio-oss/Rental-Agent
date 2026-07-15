@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5 Step 8 — Production Provider Framework** (done, 460 tests total) is a new, explicitly separate version built on top of all of the above — see its own section below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests) and **Step 9 — Dynamic Filter Engine** (done, 562 tests total), which also fulfills the Version 2.0 Step 8 slot's original intent — see both sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -395,12 +395,14 @@ self-contained, ending with the one piece that has an unresolved external depend
    (numbered `20`, not the mission's requested `19` — already taken by
    [19_Analysis_Engine.md](19_Analysis_Engine.md), the same collision Steps 5/6 each
    hit and resolved the same way).
-8. **Dynamic Filter Engine** (`search/filters/` subpackage split) — independent of 2–6;
-   migrate the 5 existing filters first (behavior-preserving refactor), then add one or
-   two real filters per new category as *examples* of the pattern working, not all ~25
-   at once — the framework, not the exhaustive filter list, is what v2.0 is scoped to.
-   Now unblocked to actually read real `apartment_analysis_metrics` data for its
-   proximity/score filters, since Step 6 made that data genuinely producible.
+8. **Dynamic Filter Engine** — this v2.0 Step 8 slot (originally sketched as a
+   `search/filters/` subpackage split, migrating the 5 existing filters plus one or
+   two examples per new category) was **superseded, not built as originally
+   planned**: it was built for real under **Version 2.5 Step 9** instead, as a whole
+   new `src/filter_engine/` package with all ~38 mission-requested filters (not just
+   one or two examples), reusing rather than migrating the 5 existing
+   `search/criteria.py` definitions. See "Version 2.5" below —
+   [25_Dynamic_Filter_Engine.md](25_Dynamic_Filter_Engine.md) for the full write-up.
 
 Each step: preserve all 73 currently-passing tests, add new tests for the new behavior,
 run the full suite, commit — the same discipline every phase so far has followed.
@@ -461,8 +463,9 @@ are). 15 new tests (428 total). Full write-up:
 Explicitly a new version, not a continuation of Version 2.0's numbered steps — begun
 once the user confirmed Steps 1–7 complete, the SDK validated (docs/22), and the
 architecture reviewed (docs/23). "Step 8" here is v2.5's own first step, distinct
-from the Dynamic Filter Engine's "Step 8" slot still open in Version 2.0's own list
-above (that item is unaffected and still pending).
+from the Dynamic Filter Engine's "Step 8" slot in Version 2.0's own list above — that
+item was subsequently built for real as **Version 2.5 Step 9** (below), not left
+pending.
 
 Completes the Provider Abstraction Layer (unnumbered Version 2.0 addition, above)
 into a full production framework: `ProviderFactory`, `ProviderConfiguration`,
@@ -477,6 +480,37 @@ remains future work, not claimed as done here.
 
 32 new tests (460 total: 428 existing untouched + 32 new). Full write-up:
 [24_Production_Providers.md](24_Production_Providers.md).
+
+## Version 2.5 Step 9 — Dynamic Filter Engine (done 2026-07-15)
+
+Fulfills the Version 2.0 Step 8 slot's original intent (see that entry above) as a
+new v2.5 step instead — a whole new `src/filter_engine/` package, not the originally
+sketched `search/filters/` subpackage split, with all ~38 mission-requested filters
+rather than one or two examples per category.
+
+`FilterEngine`/`FilterRegistry`/`FilterFactory`/`BaseFilter`/`FilterMetadata`/
+`FilterConfiguration`/`FilterResult`/`FilterValidator`/`FilterStatistics`/
+`FilterHistory` — a fully modular, self-registering plugin system mirroring
+`ConnectorRegistry`/`AnalysisRegistry`/`ProviderRegistry`'s established shape. 39
+built-in filters: 12 genuinely data-backed (reusing `search.criteria`'s existing
+`max_price`/`min_price`/`min_sqft` logic and the Deep Analysis Engine's stored
+proximity scores, never duplicating either), 27 honestly dormant (real, registered,
+tested filters for fields — amenities, room/flatshare preferences, structured
+geography, stay duration — that don't exist anywhere in `Apartment`/`RawListing` yet;
+always pass, never fabricate an exclusion, connecting directly to the "room/
+flatshare" scope tension this project has deferred since v1.0). Full AND/OR/NOT/
+nested composition, deterministic execution order. `search/criteria.py`'s
+`get_filter()` now falls back to the new, much larger registry (a deferred import
+avoiding a circular dependency), so any of the 39 filters works through
+`SearchRequest.criteria` immediately, with zero changes to `SearchRequest` itself.
+New migration `0005_filter_execution_history.sql` for `FilterHistory` — the one
+genuinely new table this sprint needed (`0001`–`0004` untouched).
+
+`RentalResearchAgent` gained one new, optional, default-`None` `filter_engine`
+parameter (byte-identical behavior for every existing caller); `ui/cli.py` gained
+one new, off-by-default `--use-filter-engine` flag. 102 new tests (562 total: 460
+existing untouched + 102 new). Full write-up:
+[25_Dynamic_Filter_Engine.md](25_Dynamic_Filter_Engine.md).
 
 ## Beyond Version 2.0 (explicitly deferred)
 

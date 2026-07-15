@@ -34,14 +34,46 @@ def register(definition: FilterDefinition) -> None:
 
 
 def get_filter(key: str) -> FilterDefinition:
-    try:
+    """v2.5 Step 9 — falls back to the Dynamic Filter Engine's much larger registry
+    (`src.filter_engine.registry.FilterRegistry`, 39 filters vs. this module's
+    original 5) for any key this module has never owned itself, so `SearchRequest`
+    construction/`RankingEngine.rank()`'s existing `apply_filters()` call keep working
+    unchanged for *any* registered filter key, old or new — a caller never needs to
+    know which of the two registries actually owns a given key.
+
+    The import is deferred (inside the function, not at module load) specifically to
+    avoid a circular dependency: `filter_engine`'s own built-in filters
+    (`filters/core_filters.py`) import *this* module to reuse `max_price`/`min_price`/
+    `min_sqft`'s already-correct comparison logic rather than duplicating it.
+    """
+    if key in _REGISTRY:
         return _REGISTRY[key]
-    except KeyError:
-        raise KeyError(f"{key!r} is not a registered search filter. Registered: {sorted(_REGISTRY)}") from None
+
+    from src.filter_engine.base_filter import FilterContext
+    from src.filter_engine.registry import FilterRegistry
+
+    if FilterRegistry.is_registered(key):
+        filter_instance = FilterRegistry.get(key)
+        empty_context = FilterContext()
+        return FilterDefinition(
+            key=key,
+            validate=filter_instance.validate,
+            matches=lambda apartment, value: filter_instance.apply(apartment, value, empty_context),
+        )
+
+    raise KeyError(f"{key!r} is not a registered search filter. Registered: {sorted(_REGISTRY)}")
 
 
 def registered_keys() -> list[str]:
-    return sorted(_REGISTRY)
+    """Every key `get_filter()` can resolve — this module's original 5 plus (v2.5
+    Step 9) whichever of the Dynamic Filter Engine's 39 aren't already one of them
+    (`max_price`/`min_price` are registered in both; the union, not the sum, is
+    returned). Deferred import for the same circular-dependency reason `get_filter()`
+    documents.
+    """
+    from src.filter_engine.registry import FilterRegistry
+
+    return sorted({*_REGISTRY, *(f.key for f in FilterRegistry.all())})
 
 
 def extract_value(raw_value: object) -> object:

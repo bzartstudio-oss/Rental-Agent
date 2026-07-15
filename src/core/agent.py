@@ -20,6 +20,7 @@ from src.analyzers.engine import process_listings
 from src.connectors.sdk import ConnectorException, ConnectorFactory
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
+from src.filter_engine import FilterContext, FilterEngine, FilterHistoryEntry, record_filter_execution
 from src.knowledge import knowledge_service
 from src.knowledge import metrics as knowledge_metrics
 from src.providers import (
@@ -55,15 +56,21 @@ class RentalResearchAgent:
         output_dir: Path = OUTPUT_DIR,
         data_router: ProviderRouter | None = None,
         ai_router: ProviderRouter | None = None,
+        filter_engine: FilterEngine | None = None,
     ) -> None:
-        """`data_router`/`ai_router` are optional and default to `None` — every
-        existing caller (every test that doesn't pass them) gets byte-identical
-        behavior to before v2.0's Provider Abstraction Layer existed. See
-        docs/21_Provider_Abstraction_Layer.md "Integration" for what each one changes
-        when supplied: `data_router` replaces the platforms it manages (RentCast,
-        local demo) in the per-platform loop below with a single scored,
-        fallback-aware choice; `ai_router` adds an optional AI-generated summary to
-        the report. Neither touches any *other* registered platform/connector.
+        """`data_router`/`ai_router`/`filter_engine` are optional and default to
+        `None` — every existing caller (every test that doesn't pass them) gets
+        byte-identical behavior to before v2.0's Provider Abstraction Layer or v2.5's
+        Dynamic Filter Engine existed. See docs/21_Provider_Abstraction_Layer.md
+        "Integration" for what the first two change when supplied; see
+        docs/25_Dynamic_Filter_Engine.md "Integration" for `filter_engine`: when
+        given, it re-filters `apartments` (with full `FilterContext` — a real `conn`
+        and this run's own `analysis_results`, so context-dependent filters like
+        `image_count`/`walking_distance` get real evidence, not just the honest
+        "no evidence" degradation `search.criteria.apply_filters()` falls back to)
+        and records `FilterHistory`, before `RankingEngine.rank()` runs its own
+        (unchanged, still-called) `apply_filters()` pass — safe and idempotent, since
+        `FilterEngine`'s output is always a subset of its input.
         """
         self._db = db
         self._output_dir = output_dir
@@ -72,6 +79,7 @@ class RentalResearchAgent:
         self._ranking = RankingEngine()
         self._data_router = data_router
         self._ai_router = ai_router
+        self._filter_engine = filter_engine
 
     def run(self, request: SearchRequest) -> SearchRunResult:
         """Runs one search to completion: persists the request, discovers relevant
@@ -210,6 +218,9 @@ class RentalResearchAgent:
             )
             for result in analysis_results.values():
                 analysis_service.record_analysis(conn, result)
+
+        if self._filter_engine is not None:
+            apartments = self._run_filter_engine(request, apartments, analysis_results)
 
         ranked = self._ranking.rank(apartments, request)
 
@@ -380,3 +391,51 @@ class RentalResearchAgent:
 
         with self._db.transaction() as conn:
             return process_listings(conn, result.listings, platform_id, request.id)
+
+    def _run_filter_engine(
+        self,
+        request: SearchRequest,
+        apartments: list[Apartment],
+        analysis_results: dict,
+    ) -> list[Apartment]:
+        """Runs `self._filter_engine` over every collected apartment, with a real
+        `FilterContext` (this run's own `conn`/`analysis_results`, not the empty one
+        `search.criteria.get_filter()`'s fallback uses) so context-dependent filters
+        (`image_count`, `walking_distance`, `public_transport_time`,
+        `maximum_distance`) actually see evidence. Records `FilterHistory` — search
+        id, filter set, execution time, results count, statistics — via the same
+        `filter_execution_history` table (migration 0005) `docs/25_Dynamic_Filter_Engine.md`
+        describes. See docs/25 "Integration" for why this runs *before*
+        `RankingEngine.rank()` rather than replacing its own `apply_filters()` call.
+        """
+        now = datetime.now(timezone.utc)
+        with self._db.transaction() as conn:
+            context = FilterContext(conn=conn, analysis_results=analysis_results)
+            results, statistics = self._filter_engine.run(apartments, request.criteria, context)
+            matched_ids = {result.apartment_id for result in results if result.matches}
+            filtered = [apartment for apartment in apartments if apartment.id in matched_ids]
+
+            record_filter_execution(
+                conn,
+                FilterHistoryEntry(
+                    search_id=request.id,
+                    filter_set=request.criteria,
+                    total_apartments=statistics.total_apartments,
+                    matched_count=statistics.matched_count,
+                    statistics=statistics,
+                    recorded_at=now,
+                    execution_time_ms=statistics.execution_time_ms,
+                ),
+            )
+
+        logger.info(
+            "filter engine run",
+            extra={
+                "search_id": request.id,
+                "total_apartments": statistics.total_apartments,
+                "matched_count": statistics.matched_count,
+                "match_rate": statistics.match_rate,
+                "execution_time_ms": statistics.execution_time_ms,
+            },
+        )
+        return filtered

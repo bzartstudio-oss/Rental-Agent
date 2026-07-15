@@ -4,6 +4,48 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.1] — 2026-07-15 — Dynamic Filter Engine
+
+Fulfills the Version 2.0 Step 8 slot's original intent (a filter-engine subpackage,
+originally sketched as one or two example filters per category), built for real
+instead as a new v2.5 step with all ~38 mission-requested filters.
+
+### Added
+- `src/filter_engine/` — a fully modular, self-registering plugin system:
+  `BaseFilter`, `FilterRegistry`/`FilterFactory`, `FilterConfiguration` (enable/
+  disable filters without touching the engine), `FilterContext`, composition
+  (`FilterCondition`/`FilterGroup`/`FilterOperator` — AND/OR/NOT/nesting),
+  `FilterValidator`, `FilterStatistics`, `FilterHistory`, `sync_filter_definitions()`
+  (finally uses the `filter_definitions` table designed in migration 0001).
+- 39 built-in filters: 12 data-backed (max/min price, currency, property type, exact
+  room count, min/max area, image count, platform, and three Deep-Analysis-Engine-
+  backed proximity filters), 27 honestly dormant (amenities, room/flatshare
+  preferences, structured geography, stay duration, room type, radius — real,
+  registered, tested filters for fields that don't exist in the schema yet; always
+  pass, never fabricate an exclusion).
+- Migration `0005_filter_execution_history.sql` — `FilterHistory`'s persistence.
+  `0001`–`0004` untouched.
+- `docs/25_Dynamic_Filter_Engine.md`.
+- 102 new tests (562 total).
+
+### Changed
+- `search/criteria.py`'s `get_filter()`/`registered_keys()` now fall back to/include
+  the Dynamic Filter Engine's registry (deferred import, no circular dependency) — a
+  `SearchRequest` can now reference any of the 39 new filters, not just the original 5.
+- `RentalResearchAgent.__init__` gained one new, optional, default-`None`
+  `filter_engine` parameter. Every existing caller is unaffected.
+- `ui/cli.py` gained one new, off-by-default flag: `--use-filter-engine`.
+
+### Explicitly not duplicated
+- Data-backed filters reuse `search.criteria.FilterDefinition`'s existing
+  `max_price`/`min_price`/`min_sqft` logic and the Analysis Engine's already-computed
+  proximity scores — no comparison formula was reimplemented.
+
+### Known, honestly-documented limitation
+- The three distance filters operate on the Analysis Engine's normalized `[0,1]`
+  proximity score, not a literal km/minute value — that raw distance only exists as
+  formatted text inside the analyzer's own evidence, never a structured field.
+
 ## [2.5.0] — 2026-07-15 — Production Provider Framework
 
 A new version, not a Version 2.0 step — begun once Steps 1–7, the SDK Validation

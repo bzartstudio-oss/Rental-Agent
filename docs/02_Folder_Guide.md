@@ -232,6 +232,29 @@ src/
       base_ai_provider.py                                            # AIProvider(Provider) — summarize()
       ollama_ai_provider.py                                            # real HTTP to a local Ollama server
       null_ai_provider.py                                                # always available, honest None summary
+  filter_engine/                                        # [live, new package] the Dynamic Filter Engine —
+                                                          # see 25_Dynamic_Filter_Engine.md
+    __init__.py                                            # imports filters/ -> self-registration
+    base_filter.py                                            # BaseFilter (ABC), FilterContext
+    metadata.py                                                # FilterMetadata
+    configuration.py                                            # FilterConfiguration
+    result.py                                                    # FilterResult
+    registry.py                                                   # FilterRegistry, register_filter()
+    factory.py                                                     # FilterFactory
+    composition.py                                                  # FilterCondition/FilterGroup/FilterOperator, evaluate()
+    validator.py                                                     # FilterValidator
+    statistics.py                                                     # FilterStatistics, compute_filter_statistics()
+    history.py                                                         # FilterHistoryEntry, record/get_filter_execution
+    sync.py                                                             # sync_filter_definitions()
+    engine.py                                                            # FilterEngine — the pipeline itself
+    exceptions.py                                                         # FilterException hierarchy
+    filters/
+      __init__.py                                                          # eager imports -> self-registration
+      core_filters.py                                                        # 9 data-backed filters
+      distance_filters.py                                                      # 3 analysis-metric-backed filters
+      dormant_base.py                                                           # shared bases for dormant filters
+      amenities.py                                                                # 14 dormant amenity filters
+      preferences_and_other.py                                                     # 13 more dormant filters
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

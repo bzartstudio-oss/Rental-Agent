@@ -59,5 +59,49 @@ class CriteriaRegistryTests(unittest.TestCase):
             criteria.validate_criteria({"not_a_real_filter": 1})
 
 
+class DynamicFilterEngineFallbackTests(unittest.TestCase):
+    """v2.5 Step 9 — get_filter()/validate_criteria()/apply_filters() must transparently
+    resolve any of the Dynamic Filter Engine's 39 filters too, not just this module's
+    original 5, so SearchRequest construction and RankingEngine.rank()'s existing
+    apply_filters() call keep working for either registry without either needing to
+    know which one actually owns a given key.
+    """
+
+    def test_get_filter_falls_back_to_the_filter_engine_registry(self) -> None:
+        definition = criteria.get_filter("currency")
+        self.assertEqual(definition.key, "currency")
+
+    def test_original_five_keys_still_resolve_from_this_module_first(self) -> None:
+        # min_bedrooms/min_bathrooms/min_sqft have no FilterEngine equivalent under
+        # the same key — this module must still be the (only) source for them.
+        self.assertTrue(criteria.get_filter("min_bedrooms"))
+
+    def test_apply_filters_works_with_a_filter_engine_only_key(self) -> None:
+        matching = _apartment(id="a", currency="USD")
+        non_matching = _apartment(id="b", currency="EUR")
+
+        result = criteria.apply_filters([matching, non_matching], {"currency": "USD"})
+
+        self.assertEqual([a.id for a in result], ["a"])
+
+    def test_validate_criteria_accepts_a_filter_engine_only_key(self) -> None:
+        criteria.validate_criteria({"property_type": "apartment"})  # must not raise
+
+    def test_validate_criteria_still_rejects_a_genuinely_unknown_key(self) -> None:
+        with self.assertRaises(KeyError):
+            criteria.validate_criteria({"still_not_a_real_filter": 1})
+
+    def test_dormant_filter_engine_key_never_excludes_via_apply_filters(self) -> None:
+        apartments = [_apartment(id="a"), _apartment(id="b")]
+        result = criteria.apply_filters(apartments, {"private_bathroom": True})
+        self.assertEqual({a.id for a in result}, {"a", "b"})
+
+    def test_registered_keys_includes_both_registries(self) -> None:
+        keys = criteria.registered_keys()
+        self.assertIn("min_bedrooms", keys)  # this module's own
+        self.assertIn("currency", keys)  # Dynamic Filter Engine's
+        self.assertEqual(len(keys), len(set(keys)))  # union, no duplicates
+
+
 if __name__ == "__main__":
     unittest.main()

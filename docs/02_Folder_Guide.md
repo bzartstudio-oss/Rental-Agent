@@ -136,7 +136,9 @@ src/
     search_memory_repository.py                  # [v2.0 Step 3, live] search_observed_apartments,
                                                     # complete_search_execution (the run-stats UPDATE),
                                                     # find_previous_search, get_search_history
-    knowledge_repository.py                      # knowledge_entries
+    reference_data_repository.py                 # knowledge_entries — curated reference facts, unrelated
+                                                    # to src/knowledge/ (renamed from knowledge_repository.py
+                                                    # in v2.0 Step 4.5 to stop the two "knowledge"s colliding)
     platform_intelligence_repository.py            # [v2.0 Step 4, live] platform_performance_observations —
                                                      # data access only; rollup writes are
                                                      # discovery/platform_registry.py::update_platform_rollups

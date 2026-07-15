@@ -67,8 +67,8 @@ class MigrationFromV1DatabaseTests(unittest.TestCase):
             self.assertIn("apartment_change_log", tables)
             self.assertIn("platform_performance_observations", tables)
 
-            applied = conn.execute("SELECT version FROM schema_migrations").fetchall()
-            self.assertEqual([r[0] for r in applied], [1])
+            applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+            self.assertEqual([r[0] for r in applied], [1, 2])  # every real migration applied, in order
         finally:
             conn.close()
 
@@ -87,8 +87,8 @@ class RepeatedStartupTests(unittest.TestCase):
 
         conn = sqlite3.connect(self.db_path)
         try:
-            rows = conn.execute("SELECT version FROM schema_migrations").fetchall()
-            self.assertEqual([r[0] for r in rows], [1])  # recorded exactly once, not twice
+            rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+            self.assertEqual([r[0] for r in rows], [1, 2])  # each recorded exactly once, not twice
         finally:
             conn.close()
 
@@ -195,6 +195,47 @@ class MigrationOrderingTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             Database(db_path=self.db_path, migrations_dir=self.migrations_dir)
+
+
+class Migration0002IndexTests(unittest.TestCase):
+    """v2.0 Step 4.5 architecture cleanup: 0002_search_requests_created_at_index.sql —
+    added after the review found search_requests had no index beyond its primary key,
+    despite being scanned and sorted by created_at on every completed search
+    (search_memory_repository.find_previous_search/get_search_history).
+    """
+
+    def setUp(self) -> None:
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmp_dir.name) / "test.db"
+
+    def tearDown(self) -> None:
+        self._tmp_dir.cleanup()
+
+    def test_the_index_exists_after_migration(self) -> None:
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            indexes = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'search_requests'"
+                ).fetchall()
+            }
+            self.assertIn("idx_search_requests_created_at", indexes)
+        finally:
+            conn.close()
+
+    def test_applying_it_twice_does_not_error(self) -> None:
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)  # must not raise
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+            self.assertEqual([row[0] for row in applied], [1, 2])
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

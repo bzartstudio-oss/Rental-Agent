@@ -98,6 +98,26 @@ Ranking Engine box now consults the **Dynamic Filter Engine**
 
 Principle 7 ("business logic must remain independent from any individual website") is enforced structurally, not just by convention: **only `connectors/` may import or reference anything platform-specific** (a site's HTML structure, its API shape, its quirks). Every module downstream of `connectors/` operates exclusively on the shared `RawListing`/`Apartment` shapes defined in [03_Data_Model.md](03_Data_Model.md). A code reviewer's checklist question for any change to `analyzers/`, `ranking/`, `storage/`, or `services/`: *does this file need to know which website a listing came from?* If yes, that logic belongs in a connector, not here.
 
+## Repository Writes vs. Service Layer
+
+Made explicit in v2.0 Step 4.5 (architecture review), describing a rule the code had
+already been following since Step 2 without ever writing it down: `analyzers/engine.py`
+is allowed to call a `storage/*_repository.py` function **directly**, bypassing
+`history_service.py`/`search_memory_service.py`, when the write is an **unconditional
+append with no decision attached** — "record that this happened," full stop
+(`apartment_repository.add_price_history` on a new apartment, `apartment_history_
+repository.add_image_event`, `search_memory_repository.add_observed_apartment`). It
+must go through the matching service function instead when the write depends on a
+**decision** — does this field actually differ from what's stored
+(`history_service.record_new_apartment`/`record_reobservation`), has anything changed
+since the previous search (`search_memory_service.record_completed_search`). The
+distinction: a repository call needs zero business logic to justify; routing an
+unconditional append through a service function would only add an empty pass-through
+wrapper, which is exactly the premature-abstraction [CLAUDE.md](../CLAUDE.md) warns
+against. This does **not** loosen "storage/ must not contain business rules about what
+to store" above — the decision, when there is one, still lives in `history_service.py`/
+`search_memory_service.py`/`engine.py`, never in the repository itself.
+
 ## Extensibility Without Over-Engineering
 
 Principle 6 ("support new countries, cities, rental types, and data sources without major redesign") is satisfied two different ways depending on the dimension, deliberately not the same way for all of them:

@@ -87,6 +87,29 @@ and `learning/architecture_notes.md` for the full writeup; caught by
 running the *real* orchestrator twice against the *real* demo_platform connector, not
 just a unit test with artificially-matched timestamps.
 
+## Two Reconstruction Helpers, Not One
+
+Found during the v2.0 Step 4.5 architecture review: this module's `_value_as_of`
+(private) and `src/history/history_service.py::previous_version` (public) both
+reconstruct "what was this apartment's field worth at some earlier point" from the
+same underlying history tables — worth asking why one wasn't reused for the other.
+They answer genuinely different questions:
+
+- **`previous_version`** — "what did this apartment look like right before its most
+  recent recorded change?" No search identity involved; it just takes the second-newest
+  row in each field's own history. A plain, single-apartment read, useful on its own.
+- **`_value_as_of`** — "what was this field's value *as of a specific named search*?"
+  Needed because `compare_searches(a, b)` lets the caller pick *any* two searches, which
+  might not be adjacent in a given apartment's own history at all (other searches may
+  have observed it, unchanged, in between `a` and `b`). Answering that requires a
+  search identity as an input, which `previous_version` has no use for.
+
+Merging them would mean either bolting an unused `search_id` parameter onto every
+`history_service` read (which has nothing to do with comparing two searches), or
+weakening `_value_as_of`'s search-identity matching back down to the timestamp-only
+approach that caused the real bug documented above. Kept as two small, separately
+correct functions instead — see each one's docstring for the cross-reference.
+
 ## Where This Runs
 
 Same place as the Knowledge Engine ([16_Knowledge_Engine.md](16_Knowledge_Engine.md)) —

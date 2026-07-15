@@ -129,6 +129,23 @@ def previous_version(conn: sqlite3.Connection, apartment_id: str) -> Apartment |
 
     Returns `None` if the apartment has never been observed more than once — there is
     no "previous version" of something seen exactly once.
+
+    v2.0 Step 4.5 note — why this doesn't share code with
+    `src/search_memory/search_memory_service.py::_value_as_of` (found during the
+    architecture review, deliberately not merged): this function answers a
+    single-apartment question with no search context at all — "what did this
+    apartment's own history look like right before its latest change?" — using
+    whatever the two or three most recent rows happen to be, in whatever searches
+    wrote them. `_value_as_of` answers a different question — "what was this field's
+    value *as of a specific named search*?" — which is what run-over-run comparison
+    (`compare_searches`) needs when the two searches being compared aren't necessarily
+    adjacent in an apartment's own change history (other searches may have observed it,
+    unchanged, in between). That's why `_value_as_of` takes a `search_id`/`created_at`
+    pair as a parameter and this function doesn't: forcing this one to accept a search
+    identity it doesn't need would complicate `latest_version`/`previous_version`'s
+    simple read-side API for a capability only Search Memory's comparison actually
+    requires. See `docs/17_Search_Memory.md` "Two Reconstruction Helpers, Not One" for
+    the full writeup.
     """
     current = apartment_repository.get_apartment(conn, apartment_id)
     if current is None:

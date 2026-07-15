@@ -1,6 +1,16 @@
-"""Persistence for `knowledge_entries` — the Knowledge Database (docs/02_Folder_Guide.md
-data/knowledge_base/). Curated reference data, not raw scrape output: consulted by
-analyzers/enricher.py and potentially ranking, never written to by a connector.
+"""Persistence for `knowledge_entries` — curated reference data (docs/02_Folder_Guide.md
+data/knowledge_base/), not raw scrape output: consulted by analyzers/enricher.py and
+potentially ranking, never written to by a connector.
+
+Renamed from `knowledge_repository.py` in v2.0 Step 4.5 to avoid confusion with the
+unrelated `src/knowledge/` package (the Knowledge Engine, v2.0 Step 4) — that package
+accumulates *observed* evidence from search execution (platform performance, run
+outcomes); this module holds hand-curated *reference* facts (e.g. "average rent in
+neighborhood X") that nothing writes automatically. Two genuinely different kinds of
+"knowledge," previously sharing a name by coincidence of when each was built. Currently
+unused: no enrichment rule needing curated reference data has been built yet (see
+`analyzers/enricher.py`'s docstring) — kept, not deleted, since the table and this
+module are the documented, correct home for that future need, not stale cruft.
 """
 
 from __future__ import annotations

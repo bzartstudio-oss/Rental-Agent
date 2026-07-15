@@ -294,6 +294,17 @@ def _value_as_of(entries: list, as_of_search_id: str, as_of_created_at: datetime
     itself* wrote, which would wrongly count a brand-new apartment's very first price/
     title/image entry as a "change" relative to the search that created it. Matching on
     `search_id` first sidesteps that entirely — see learning/architecture_notes.md.
+
+    v2.0 Step 4.5 note — why this doesn't share code with
+    `src/history/history_service.py::previous_version` (deliberately not merged, see
+    that function's docstring for the full writeup): this reconstructs a value as of
+    one of two *specific, named* searches being compared, which may not be adjacent in
+    the apartment's own history at all; `previous_version` reconstructs "whatever came
+    right before the latest change," with no search identity involved, for a plain
+    single-apartment read. Different parameters, different questions — merging them
+    would mean either bolting an unused `search_id` parameter onto every
+    `history_service` read call, or losing the identity-matching this function needs
+    to stay correct.
     """
     applicable = [
         entry for entry in entries if entry.search_id == as_of_search_id or entry.observed_at <= as_of_created_at

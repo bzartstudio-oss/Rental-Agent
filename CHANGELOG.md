@@ -4,6 +4,41 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.0.5] — 2026-07-15 — Architecture Cleanup
+
+A small, explicitly-scoped cleanup pass following an architecture review (no blockers
+found) — done between Version 2.0 Step 4 and Step 5. No behavior changes.
+
+### Changed
+- `storage/knowledge_repository.py` renamed to `storage/reference_data_repository.py`
+  — it was colliding in name with the unrelated new `src/knowledge/` package.
+  `analyzers/enricher.py`'s comment referencing the old name updated to match.
+
+### Added
+- Migration `0002_search_requests_created_at_index.sql` — adds
+  `idx_search_requests_created_at`; `search_requests` had no index beyond its primary
+  key despite being scanned and sorted by `created_at` on every completed search.
+  `0001` untouched.
+- 2 new migration tests (`Migration0002IndexTests`); two existing migration tests'
+  applied-version assertions updated from `[1]` to `[1, 2]`.
+
+### Documentation
+- `docs/17_Search_Memory.md` — new "Two Reconstruction Helpers, Not One" section
+  explaining why `history_service.previous_version()` and
+  `search_memory_service._value_as_of()` both exist and aren't merged.
+- `docs/01_System_Architecture.md` — new "Repository Writes vs. Service Layer" section
+  formalizing the rule `analyzers/engine.py`'s direct `search_memory_repository` write
+  already followed (and `apartment_history_repository.add_image_event` before it).
+- `docs/03_Data_Model.md` — `ranking_usefulness_score`'s "exact formula TBD" note was
+  stale (implemented in Step 4); updated to state the actual formula. Its Open
+  Questions entry removed accordingly.
+
+### Reviewed, no change needed
+- No source-code `TODO`/`FIXME`/`XXX` comments existed anywhere in `src/`/`tests/`.
+- No circular imports, oversized classes, or repository-consistency issues found.
+
+200 tests passing (198 existing + 2 new).
+
 ## [2.0.4] — 2026-07-14 — Knowledge Engine
 
 Fourth step of the Version 2.0 implementation (see `docs/10_Roadmap.md` "Implementation Order").

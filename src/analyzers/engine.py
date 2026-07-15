@@ -136,6 +136,19 @@ def _record_observed(conn: sqlite3.Connection, apartment_id: str, now: datetime,
     (an observation only makes sense in the context of the search that made it), so this
     is skipped — not the rest of the write sequence — when `process_listing()` is called
     without one (only direct unit tests; the real `RentalResearchAgent` always has one).
+
+    v2.0 Step 4.5 note: this calls `storage.search_memory_repository` directly rather
+    than going through `src/search_memory/search_memory_service.py` — reviewed
+    deliberately, not an oversight. It's the same pattern this file already uses for
+    `apartment_history_repository.add_image_event` and every `apartment_repository.add_*`
+    call above: an unconditional append with no decision to make ("record that this
+    apartment was observed," always, when there's a search to attribute it to). The
+    History/Search Memory *service* layers exist for logic that decides *whether*
+    something changed (`record_new_apartment`/`record_reobservation`,
+    `record_completed_search`) — there's no such decision here, so routing through a
+    service function would only add a pass-through wrapper with nothing to do. See
+    docs/01_System_Architecture.md "Repository Writes vs. Service Layer" for the
+    general rule this follows.
     """
     if search_id:
         search_memory_repository.add_observed_apartment(conn, search_id, apartment_id, now)

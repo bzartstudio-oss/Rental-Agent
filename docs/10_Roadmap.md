@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–4 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), and the Knowledge Engine (Step 4, 198 tests passing). Steps 5–7 (Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–4 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), and the Knowledge Engine (Step 4) — **plus an architecture cleanup pass (Step 4.5, 200 tests passing)** before Step 5 begins. Steps 5–7 (Connector SDK, Dynamic Filter Engine, Deep Analysis Engine) remain designed but not implemented. See "Version 2.0" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -246,6 +246,34 @@ self-contained, ending with the one piece that has an unresolved external depend
    correctly-computed `reliability_score`/`success_rate`, while platforms never
    actually searched (`zillow`, `idealista`, etc.) correctly show `NULL` rather than a
    fabricated `0`.
+
+   **Step 4.5 — Architecture Cleanup (done, 2026-07-15).** A small, explicitly-scoped
+   pass between Step 4 and Step 5, following an architecture review that found no
+   blockers but five worthwhile small fixes:
+   1. `storage/knowledge_repository.py` renamed to `storage/reference_data_repository.py`
+      — it was colliding, by name only, with the unrelated new `src/knowledge/` package.
+   2. New migration `0002_search_requests_created_at_index.sql` — adds
+      `idx_search_requests_created_at`; `search_requests` had no index beyond its
+      primary key despite `search_memory_repository.find_previous_search`/
+      `get_search_history` scanning and sorting it by `created_at` on every completed
+      search. `0001` untouched.
+   3. Documented (not merged) why `history_service.previous_version()` and
+      `search_memory_service._value_as_of()` both exist — see
+      `docs/17_Search_Memory.md` "Two Reconstruction Helpers, Not One."
+   4. Documented (not refactored, since it doesn't violate anything) why
+      `analyzers/engine.py` writes to `storage/search_memory_repository.py` directly —
+      see `docs/01_System_Architecture.md` "Repository Writes vs. Service Layer," the
+      general rule this and the pre-existing `apartment_history_repository.add_image_event`
+      direct call both already followed.
+   5. One stale doc TBD resolved: `docs/03_Data_Model.md`'s `ranking_usefulness_score`
+      row and Open Questions entry said "exact formula TBD" — it was implemented in
+      Step 4; updated to state the actual formula instead.
+
+   No source-code TODO/FIXME/XXX comments existed anywhere in `src/`/`tests/` to
+   review — the codebase's `TBD` markers are all in `docs/` (a deliberate, different
+   convention, see `docs/13_Claude_Guidelines.md`), and only the one above had actually
+   been resolved by later work. 200 tests passing (198 existing + 2 new migration
+   tests) — no behavior changed, only names, an index, and documentation.
 5. **Connector SDK** (`BaseConnector` template method) — independent of 2–4, could be
    done in parallel; migrate `demo_platform.py`/`demo_platform_two.py` onto it as proof,
    same way Phase 7 proved the original Connector contract.

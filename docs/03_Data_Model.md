@@ -227,7 +227,7 @@ after each insert.
 | `image_quality_score` | REAL, nullable | 0–1, fraction of listings with at least one usable image |
 | `availability_quality_score` | REAL, nullable | 0–1, fraction of listings with a resolvable status (vs. unknown/unparseable) |
 | `duplicate_rate` | REAL, nullable | 0–1, fraction of this platform's raw listings in this run that were exact/near duplicates of each other (a connector/data-quality signal — distinct from `apartments.merged_into_id`, which is cross-platform and still V2) |
-| `ranking_usefulness_score` | REAL, nullable | 0–1, *TBD exact formula* — proposed: fraction of this platform's listings that ended up in the top N of `search_results` versus its share of total candidates, as a proxy for "did this platform's results actually compete" |
+| `ranking_usefulness_score` | REAL, nullable | Not bounded to 0–1 (can exceed 1) — implemented in v2.0 Step 4 (`src/knowledge/metrics.py::ranking_usefulness_score`): (platform's fraction of the top-`N` ranked apartments) ÷ (platform's fraction of all candidates this run), `N = 10`. See [16_Knowledge_Engine.md](16_Knowledge_Engine.md) |
 | `parsing_success` | INTEGER (bool) | Whether the connector's `_parse()` completed without raising, independent of whether individual field extraction was perfect |
 | `observed_at` | TEXT (ISO 8601) | — |
 
@@ -310,5 +310,4 @@ full-size image, not a new top-level folder.
 ## Open Questions
 
 - Exact `status` vocabulary for `apartment_availability_history` / `current_status` (carried over from v1.1, still open).
-- Exact formula for `ranking_usefulness_score` — proposed above, not yet validated against real data.
 - See [../notes/Questions.md](../notes/Questions.md) for what's still open elsewhere.

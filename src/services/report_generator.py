@@ -41,8 +41,17 @@ from pathlib import Path
 from src.analysis.models import AnalysisResult
 from src.core.config import OUTPUT_DIR
 from src.discovery import platform_registry
+from src.geography.models import GeoEnrichment, TravelMode
 from src.storage import apartment_repository, search_repository
 from src.storage.database import Database
+
+_MODE_LABELS = {
+    TravelMode.WALKING: "Walking",
+    TravelMode.CYCLING: "Cycling",
+    TravelMode.DRIVING: "Driving",
+    TravelMode.PUBLIC_TRANSPORT: "Public transport",
+    TravelMode.STRAIGHT_LINE: "Straight-line",
+}
 
 
 def generate_report(
@@ -51,8 +60,10 @@ def generate_report(
     output_dir: Path = OUTPUT_DIR,
     analysis_results: dict[str, AnalysisResult] | None = None,
     ai_summary: str | None = None,
+    geo_enrichments: dict[str, GeoEnrichment] | None = None,
 ) -> Path:
     analysis_results = analysis_results or {}
+    geo_enrichments = geo_enrichments or {}
 
     with db.transaction() as conn:
         search = search_repository.get_search_request(conn, search_id)
@@ -66,8 +77,11 @@ def generate_report(
             price_history = apartment_repository.get_price_history(conn, result.apartment_id)
             availability_history = apartment_repository.get_availability_history(conn, result.apartment_id)
             analysis = analysis_results.get(result.apartment_id)
+            geo = geo_enrichments.get(result.apartment_id)
             rows_html.append(
-                _render_result(result, apartment, platform, images, price_history, availability_history, analysis)
+                _render_result(
+                    result, apartment, platform, images, price_history, availability_history, analysis, geo
+                )
             )
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -98,6 +112,8 @@ def _render_page(search, rows_html: list[str], ai_summary: str | None = None) ->
   .analysis {{ margin-top: 0.5rem; }}
   .analysis-detail {{ font-size: 0.8rem; color: #444; margin: 0.25rem 0 0; padding-left: 1.2rem; }}
   .analysis-warning {{ color: #a15c00; }}
+  .geo {{ margin-top: 0.5rem; }}
+  .geo-detail {{ font-size: 0.8rem; color: #444; margin: 0.25rem 0 0; padding-left: 1.2rem; }}
   .ai-summary {{ background: #f2f6fb; border: 1px solid #cddcec; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.95rem; }}
   a {{ color: #0055aa; }}
 </style>
@@ -127,7 +143,16 @@ def _render_ai_summary(ai_summary: str | None) -> str:
     return f'<div class="ai-summary"><strong>AI Summary:</strong> {escape(ai_summary)}</div>'
 
 
-def _render_result(result, apartment, platform, images, price_history, availability_history, analysis: AnalysisResult | None) -> str:
+def _render_result(
+    result,
+    apartment,
+    platform,
+    images,
+    price_history,
+    availability_history,
+    analysis: AnalysisResult | None,
+    geo: GeoEnrichment | None = None,
+) -> str:
     photos_html = "".join(
         f'<img src="{escape(Path(image.local_path).as_uri())}" alt="listing photo">' for image in images
     )
@@ -154,6 +179,7 @@ def _render_result(result, apartment, platform, images, price_history, availabil
   <div class="photos">{photos_html}</div>
   <div class="history">Price history: {price_trend or 'n/a'} &nbsp;|&nbsp; Availability history: {status_trend or 'n/a'}</div>
   {_render_analysis(analysis)}
+  {_render_geo(geo)}
   <div><a href="{escape(apartment.url)}" target="_blank" rel="noopener">Original listing</a></div>
 </div>
 """
@@ -191,4 +217,46 @@ def _render_analysis(analysis: AnalysisResult | None) -> str:
     return f"""<div class="analysis">
     <div class="facts">Composite scores: {composite_html or 'n/a'}</div>
     <ul class="analysis-detail">{''.join(analyzer_rows)}</ul>
+  </div>"""
+
+
+def _render_geo(geo: GeoEnrichment | None) -> str:
+    """"Reports must display: walking time, driving time, public transport, nearby
+    services, distance summaries, confidence" (v2.5 Step 10 mission) — omitted
+    entirely when no `GeoEnrichment` is available (no `geo_engine` was supplied, or
+    the apartment had no coordinates/reference point — see
+    `GeographicEngine.enrich()`'s own docstring for when that happens), matching the
+    same honesty convention `_render_analysis()` already follows.
+    """
+    if geo is None or (not geo.distances and not any(geo.nearby.values())):
+        return ""
+
+    distance_rows = []
+    for mode in TravelMode:
+        result = geo.distances.get(mode)
+        if result is None:
+            continue
+        distance_text = f"{result.distance_km:.2f} km" if result.distance_km is not None else "n/a"
+        time_text = f"{result.travel_time_minutes:.0f} min" if result.travel_time_minutes is not None else "n/a"
+        distance_rows.append(
+            f"<li><strong>{escape(_MODE_LABELS[mode])}</strong>: {distance_text}"
+            f"{' — ' + time_text if result.travel_time_minutes is not None else ''} "
+            f"(confidence: {result.confidence:.2f}, {escape(result.calculation_method)})</li>"
+        )
+
+    nearby_rows = []
+    for category, places in geo.nearby.items():
+        for place in places:
+            if place.count is None:
+                continue
+            confidence_text = f"{place.confidence:.2f}" if place.confidence is not None else "n/a"
+            nearby_rows.append(
+                f"<li><strong>{escape(category)}</strong>: {place.count} nearby (confidence: {confidence_text})</li>"
+            )
+
+    return f"""<div class="geo">
+    <div class="facts">Distance summary:</div>
+    <ul class="geo-detail">{''.join(distance_rows) or '<li>n/a</li>'}</ul>
+    <div class="facts">Nearby services:</div>
+    <ul class="geo-detail">{''.join(nearby_rows) or '<li>No curated nearby data yet</li>'}</ul>
   </div>"""

@@ -15,6 +15,7 @@ from src.core.config import OUTPUT_DIR
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.discovery.known_platforms import ALL_KNOWN_PLATFORMS
 from src.filter_engine import FilterEngine
+from src.geography import GeographicEngine
 from src.providers import ProviderKind, ProviderRouter
 from src.search.search_request import SearchRequest
 from src.storage.database import Database
@@ -48,6 +49,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Off by default; the default flow is unchanged."
         ),
     )
+    parser.add_argument(
+        "--use-geo-engine",
+        action="store_true",
+        help=(
+            "Enrich results with the Geographic Intelligence Engine (distances, "
+            "estimated travel times, nearby services) and display them in the report "
+            "— see docs/26_Geographic_Intelligence.md. Off by default; the default "
+            "flow is unchanged."
+        ),
+    )
     return parser
 
 
@@ -76,9 +87,15 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
     data_router = ProviderRouter(ProviderKind.DATA) if args.use_provider_router else None
     ai_router = ProviderRouter(ProviderKind.AI) if args.use_provider_router else None
     filter_engine = FilterEngine() if args.use_filter_engine else None
+    geo_engine = GeographicEngine() if args.use_geo_engine else None
 
     agent = RentalResearchAgent(
-        db, output_dir=output_dir, data_router=data_router, ai_router=ai_router, filter_engine=filter_engine
+        db,
+        output_dir=output_dir,
+        data_router=data_router,
+        ai_router=ai_router,
+        filter_engine=filter_engine,
+        geo_engine=geo_engine,
     )
     result = agent.run(request)
 

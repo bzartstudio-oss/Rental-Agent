@@ -21,6 +21,7 @@ from src.connectors.sdk import ConnectorException, ConnectorFactory
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
 from src.filter_engine import FilterContext, FilterEngine, FilterHistoryEntry, record_filter_execution
+from src.geography import GeoContext, GeographicEngine, GeoEnrichment, compute_geo_statistics, record_geo_enrichment
 from src.knowledge import knowledge_service
 from src.knowledge import metrics as knowledge_metrics
 from src.providers import (
@@ -57,20 +58,29 @@ class RentalResearchAgent:
         data_router: ProviderRouter | None = None,
         ai_router: ProviderRouter | None = None,
         filter_engine: FilterEngine | None = None,
+        geo_engine: GeographicEngine | None = None,
     ) -> None:
-        """`data_router`/`ai_router`/`filter_engine` are optional and default to
-        `None` — every existing caller (every test that doesn't pass them) gets
-        byte-identical behavior to before v2.0's Provider Abstraction Layer or v2.5's
-        Dynamic Filter Engine existed. See docs/21_Provider_Abstraction_Layer.md
-        "Integration" for what the first two change when supplied; see
-        docs/25_Dynamic_Filter_Engine.md "Integration" for `filter_engine`: when
-        given, it re-filters `apartments` (with full `FilterContext` — a real `conn`
-        and this run's own `analysis_results`, so context-dependent filters like
-        `image_count`/`walking_distance` get real evidence, not just the honest
-        "no evidence" degradation `search.criteria.apply_filters()` falls back to)
-        and records `FilterHistory`, before `RankingEngine.rank()` runs its own
-        (unchanged, still-called) `apply_filters()` pass — safe and idempotent, since
-        `FilterEngine`'s output is always a subset of its input.
+        """`data_router`/`ai_router`/`filter_engine`/`geo_engine` are optional and
+        default to `None` — every existing caller (every test that doesn't pass them)
+        gets byte-identical behavior to before v2.0's Provider Abstraction Layer or
+        v2.5's Dynamic Filter Engine/Geographic Intelligence Engine existed. See
+        docs/21_Provider_Abstraction_Layer.md "Integration" for what the first two
+        change when supplied; see docs/25_Dynamic_Filter_Engine.md "Integration" for
+        `filter_engine`: when given, it re-filters `apartments` (with full
+        `FilterContext` — a real `conn` and this run's own `analysis_results`, so
+        context-dependent filters like `image_count`/`walking_distance` get real
+        evidence, not just the honest "no evidence" degradation
+        `search.criteria.apply_filters()` falls back to) and records `FilterHistory`,
+        before `RankingEngine.rank()` runs its own (unchanged, still-called)
+        `apply_filters()` pass — safe and idempotent, since `FilterEngine`'s output is
+        always a subset of its input. See docs/26_Geographic_Intelligence.md
+        "Integration" for `geo_engine`: when given, it enriches every (already
+        filtered) apartment with a `GeoEnrichment` — never mutating the `Apartment`
+        itself — and records `GeoHistory`; its output is passed straight to
+        `generate_report()` alongside `analysis_results`/`ai_summary`, rather than
+        wired into `AnalysisEngine`'s own scoring, per the same "diagram vs.
+        implementation reconciliation" reasoning already applied to the Filter
+        Engine's own integration.
         """
         self._db = db
         self._output_dir = output_dir
@@ -80,6 +90,7 @@ class RentalResearchAgent:
         self._data_router = data_router
         self._ai_router = ai_router
         self._filter_engine = filter_engine
+        self._geo_engine = geo_engine
 
     def run(self, request: SearchRequest) -> SearchRunResult:
         """Runs one search to completion: persists the request, discovers relevant
@@ -222,6 +233,10 @@ class RentalResearchAgent:
         if self._filter_engine is not None:
             apartments = self._run_filter_engine(request, apartments, analysis_results)
 
+        geo_enrichments: dict[str, GeoEnrichment] | None = None
+        if self._geo_engine is not None:
+            geo_enrichments = self._run_geo_engine(request, apartments)
+
         ranked = self._ranking.rank(apartments, request)
 
         ai_summary: str | None = None
@@ -253,6 +268,7 @@ class RentalResearchAgent:
             output_dir=self._output_dir,
             analysis_results=analysis_results,
             ai_summary=ai_summary,
+            geo_enrichments=geo_enrichments,
         )
         execution_time_ms = int((time.perf_counter() - started_at) * 1000)
 
@@ -439,3 +455,35 @@ class RentalResearchAgent:
             },
         )
         return filtered
+
+    def _run_geo_engine(
+        self,
+        request: SearchRequest,
+        apartments: list[Apartment],
+    ) -> dict[str, GeoEnrichment]:
+        """Runs `self._geo_engine` over every (already filtered) apartment, with a
+        real `GeoContext` (this run's own `conn`/`request.location`), and records one
+        `GeoHistory` row per apartment via `geo_enrichment_history` (migration 0006).
+        Never mutates any `Apartment` — see `GeographicEngine.enrich()`'s own
+        docstring — its output is an independent dict handed to `generate_report()`.
+        See docs/26_Geographic_Intelligence.md "Integration".
+        """
+        now = datetime.now(timezone.utc)
+        with self._db.transaction() as conn:
+            context = GeoContext(conn=conn, location=request.location)
+            enrichments = self._geo_engine.enrich_many(apartments, context)
+            statistics = compute_geo_statistics(enrichments)
+
+            for enrichment in enrichments.values():
+                record_geo_enrichment(conn, enrichment, recorded_at=now, search_id=request.id)
+
+        logger.info(
+            "geo engine run",
+            extra={
+                "search_id": request.id,
+                "total_apartments": statistics.total_apartments,
+                "enriched_count": statistics.enriched_count,
+                "coverage_rate": statistics.coverage_rate,
+            },
+        )
+        return enrichments

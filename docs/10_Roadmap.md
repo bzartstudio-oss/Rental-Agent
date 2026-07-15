@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests) and **Step 9 — Dynamic Filter Engine** (done, 562 tests total), which also fulfills the Version 2.0 Step 8 slot's original intent — see both sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests), **Step 9 — Dynamic Filter Engine** (done, 562 tests), which also fulfills the Version 2.0 Step 8 slot's original intent, and **Step 10 — Geographic Intelligence Engine** (done, 640 tests total) — see all three sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -511,6 +511,38 @@ parameter (byte-identical behavior for every existing caller); `ui/cli.py` gaine
 one new, off-by-default `--use-filter-engine` flag. 102 new tests (562 total: 460
 existing untouched + 102 new). Full write-up:
 [25_Dynamic_Filter_Engine.md](25_Dynamic_Filter_Engine.md).
+
+## Version 2.5 Step 10 — Geographic Intelligence Engine (done 2026-07-15)
+
+A provider-independent Geographic Intelligence Engine — not a map viewer — that
+calculates spatial relationships between apartments and points of interest.
+`GeographicEngine`/`GeoProvider`/`GeoProviderRegistry`/`GeoProviderFactory`/`GeoCache`/
+`RouteCalculator`/`DistanceCalculator`/`TravelTimeCalculator`/`NearbySearch`/
+`GeoStatistics`/`GeoHistory` — a fully modular, self-registering plugin system
+mirroring `ConnectorRegistry`/`AnalysisRegistry`/`ProviderRegistry`/`FilterRegistry`'s
+established shape. One built-in provider, `HaversineGeoProvider`: real straight-line
+distance (`src.analysis.geo.haversine_km`, reused, not reimplemented; confidence
+`1.0`) plus honestly estimated walking/cycling/driving/public-transport travel time
+(distance ÷ a documented, tunable average speed per mode; confidence `0.4`, lower
+than the exact calculation on purpose), and nearby search across all 17 mission
+categories reusing the exact `nearby_amenities`/`knowledge_entries` convention
+`analysis/analyzers/nearby_amenity.py` already established (extended from that
+analyzer's 9 categories to 17). `GeoCache` is the first real caching infrastructure
+in this codebase — the Production Readiness Review (docs/23, Question 4) found "zero
+caching infrastructure exists anywhere"; this closes that gap for real. New migration
+`0006_geo_enrichment_history.sql` for `GeoHistory` (`0001`–`0005` untouched).
+
+`RentalResearchAgent` gained one new, optional, default-`None` `geo_engine` parameter
+(byte-identical behavior for every existing caller, the same `data_router`/`ai_router`/
+`filter_engine` precedent); `ui/cli.py` gained one new, off-by-default
+`--use-geo-engine` flag. The mission's own integration diagram placed this engine
+*before* the Analysis Engine; as built, it runs after (alongside the Filter Engine)
+and its output is passed directly to the report generator as an independent artifact
+— never wired into `AnalysisEngine`'s or `RankingEngine.rank()`'s own scoring — the
+same diagram-vs-implementation reconciliation already made explicitly for the Deep
+Analysis Engine (Step 6) and the Dynamic Filter Engine (Step 9). 78 new tests (640
+total: 562 existing untouched + 78 new). Full write-up:
+[26_Geographic_Intelligence.md](26_Geographic_Intelligence.md).
 
 ## Beyond Version 2.0 (explicitly deferred)
 

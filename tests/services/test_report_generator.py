@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.analysis.models import AnalysisResult, AnalyzerResult, CompositeScore
+from src.geography.models import GeoEnrichment, GeoResult, NearbyPlace, TravelMode
 from src.services.report_generator import generate_report
 from src.storage import apartment_repository, search_repository
 from src.storage.database import Database
@@ -203,6 +204,82 @@ class AISummarySectionTests(ReportGeneratorTestCase):
         content = report_path.read_text(encoding="utf-8")
         self.assertNotIn("<script>", content)
         self.assertIn("&lt;script&gt;", content)
+
+
+class GeoSectionTests(ReportGeneratorTestCase):
+    """v2.5 Step 10 — "Reports must display: Walking time, Driving time, Public
+    transport, Nearby services, Distance summaries, Confidence" (the mission's own
+    words). Mirrors `AnalysisSectionTests`/`AISummarySectionTests`'s own shape.
+    """
+
+    def _enrichment(self) -> GeoEnrichment:
+        now = datetime.now(timezone.utc)
+        return GeoEnrichment(
+            apartment_id="apt-1",
+            distances={
+                TravelMode.WALKING: GeoResult(
+                    origin=(0, 0), destination=(0, 1), mode=TravelMode.WALKING, distance_km=1.5,
+                    travel_time_minutes=18.0, confidence=0.4, computed_at=now,
+                    provider_id="haversine", calculation_method="haversine+estimated_speed(5km/h)",
+                ),
+                TravelMode.DRIVING: GeoResult(
+                    origin=(0, 0), destination=(0, 1), mode=TravelMode.DRIVING, distance_km=1.5,
+                    travel_time_minutes=3.0, confidence=0.4, computed_at=now,
+                    provider_id="haversine", calculation_method="haversine+estimated_speed(30km/h)",
+                ),
+            },
+            nearby={
+                "supermarket": [
+                    NearbyPlace(
+                        category="supermarket", count=4, distance_km=None, travel_time_minutes=None,
+                        confidence=0.8, computed_at=now, provider_id="haversine",
+                        calculation_method="knowledge_entries",
+                    )
+                ],
+            },
+            computed_at=now,
+        )
+
+    def test_geo_section_shows_walking_and_driving_and_nearby(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            geo_enrichments={"apt-1": self._enrichment()},
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn('class="geo"', content)
+        self.assertIn("Walking", content)
+        self.assertIn("Driving", content)
+        self.assertIn("1.50 km", content)
+        self.assertIn("18 min", content)
+        self.assertIn("supermarket", content)
+        self.assertIn("4 nearby", content)
+        self.assertIn("confidence: 0.40", content)
+
+    def test_geo_section_omitted_when_no_geo_enrichments_passed(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir)
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertNotIn('class="geo"', content)
+
+    def test_geo_section_omitted_for_a_completely_empty_enrichment(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            geo_enrichments={"apt-1": GeoEnrichment(apartment_id="apt-1")},
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertNotIn('class="geo"', content)
+
+    def test_missing_geo_for_an_apartment_omits_its_section_gracefully(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            geo_enrichments={},  # apt-1 has no entry
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn("A Nice Place", content)
+        self.assertNotIn('class="geo"', content)
 
 
 if __name__ == "__main__":

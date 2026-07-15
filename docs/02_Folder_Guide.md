@@ -255,6 +255,24 @@ src/
       dormant_base.py                                                           # shared bases for dormant filters
       amenities.py                                                                # 14 dormant amenity filters
       preferences_and_other.py                                                     # 13 more dormant filters
+  geography/                                            # [live, new package] the Geographic Intelligence Engine —
+                                                          # see 26_Geographic_Intelligence.md
+    __init__.py                                            # imports providers/ -> self-registration
+    base_provider.py                                          # GeoProvider (ABC), GeoContext
+    metadata.py                                                # GeoProviderMetadata
+    models.py                                                   # TravelMode, GeoResult, NearbyPlace, GeoEnrichment
+    registry.py                                                  # GeoProviderRegistry, register_geo_provider()
+    factory.py                                                    # GeoProviderFactory
+    cache.py                                                       # GeoCache — TTL key/value store
+    calculators.py                                                  # DistanceCalculator/TravelTimeCalculator/RouteCalculator
+    nearby_search.py                                                 # NearbySearch, NEARBY_CATEGORIES (17)
+    engine.py                                                         # GeographicEngine — the orchestrator itself
+    statistics.py                                                      # GeoStatistics, compute_geo_statistics()
+    history.py                                                          # GeoHistoryEntry, record/get_geo_history
+    exceptions.py                                                        # GeoException hierarchy
+    providers/
+      __init__.py                                                          # eager imports -> self-registration
+      haversine_provider.py                                                  # real distance + estimated travel time + curated nearby
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

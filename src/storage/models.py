@@ -319,3 +319,20 @@ class FilterExecutionHistoryEntry:
     recorded_at: datetime
     execution_time_ms: int | None = None
     id: int | None = None
+
+
+@dataclass
+class GeoEnrichmentHistoryEntry:
+    """Mirrors one row of `geo_enrichment_history` (migration 0006, v2.5 Step 10) —
+    one row per `GeographicEngine.enrich()` call, append-only like every other
+    history table in this system.
+    """
+
+    apartment_id: str
+    provider_id: str
+    calculation_method: str
+    summary: dict
+    confidence: float | None
+    recorded_at: datetime
+    search_id: str | None = None
+    id: int | None = None

@@ -4,6 +4,50 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.2] — 2026-07-15 — Geographic Intelligence Engine
+
+A modular, provider-independent engine that calculates spatial relationships between
+apartments and points of interest — not a map viewer. No map/routing provider is
+hardcoded; every provider implements one interface and self-registers.
+
+### Added
+- `src/geography/` — `GeographicEngine` (orchestrator), `GeoProvider`/
+  `GeoProviderRegistry`/`GeoProviderFactory` (self-registering plugin system),
+  `GeoCache` (the first real caching infrastructure in this codebase — closes the
+  Production Readiness Review's Question 4 finding), `DistanceCalculator`/
+  `TravelTimeCalculator`/`RouteCalculator`/`NearbySearch`, `GeoStatistics`,
+  `GeoHistory`.
+- `HaversineGeoProvider` — the one built-in provider: real straight-line distance
+  (`src.analysis.geo.haversine_km`, reused), confidence `1.0`; honestly estimated
+  walking/cycling/driving/public-transport travel time (distance ÷ a documented
+  average speed per mode), confidence `0.4`; nearby search across all 17 mission
+  categories, reusing the exact `nearby_amenities`/`knowledge_entries` convention
+  `analysis/analyzers/nearby_amenity.py` already established.
+- Migration `0006_geo_enrichment_history.sql` — `GeoHistory`'s persistence.
+  `0001`–`0005` untouched.
+- `docs/26_Geographic_Intelligence.md`.
+- 78 new tests (640 total).
+
+### Changed
+- `RentalResearchAgent.__init__` gained one new, optional, default-`None` `geo_engine`
+  parameter. Every existing caller is unaffected.
+- `ui/cli.py` gained one new, off-by-default flag: `--use-geo-engine`.
+- `services/report_generator.py` gained one new, optional, default-`None`
+  `geo_enrichments` parameter, rendering walking/driving/public-transport time,
+  nearby services, distance summaries, and confidence per listing.
+
+### Explicitly not duplicated
+- `HaversineGeoProvider` reuses `src.analysis.geo.haversine_km` and the exact
+  `nearby_amenities` curated-data convention — no distance formula or lookup
+  convention was reimplemented.
+
+### Known, honestly-documented limitation
+- No real routing/geocoding/places API is integrated — travel time for every mode
+  besides straight-line is a documented average-speed estimate, not real routing.
+  Three existing Analysis Engine analyzers (`walking_distance.py`,
+  `public_transport.py`, `nearby_amenity.py`) compute conceptually similar facts and
+  were deliberately not refactored to delegate to this engine this sprint.
+
 ## [2.5.1] — 2026-07-15 — Dynamic Filter Engine
 
 Fulfills the Version 2.0 Step 8 slot's original intent (a filter-engine subpackage,

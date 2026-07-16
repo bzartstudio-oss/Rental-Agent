@@ -231,6 +231,14 @@ src/
                                                          # monitoring_schedules/monitoring_runs/monitoring_events
                                                          # each have exactly one mutation function, every other
                                                          # table is strictly append-only
+    notification_repository.py                          # [live, v2.5 Step 15] notification_preferences/_versions,
+                                                          # notification_templates, notification_batches/_deliveries/
+                                                          # _delivery_events/_digests/_attempts/_messages,
+                                                          # rate_limit_observations, channel_health_observations,
+                                                          # notification_acknowledgements — data access only;
+                                                          # preferences/batches/deliveries are current-state (one
+                                                          # mutation function each), every other table is strictly
+                                                          # append-only
   services/
     __init__.py
     report_generator.py                           # HTML Report Generator — see 09_Report_System.md
@@ -244,6 +252,13 @@ src/
                                                           # -saved-search, run-now/run-due, list-runs/compare-runs,
                                                           # list-events/acknowledge-event/export-events, next-run,
                                                           # health, task-scheduler-examples
+    notification_cli.py                                    # [live, v2.5 Step 15] create/list/view/update/enable/
+                                                            # disable-preference, preview, send-test-notification,
+                                                            # deliver-pending, generate-digest, retry-due,
+                                                            # list-deliveries/list-failed-deliveries/retry-delivery/
+                                                            # cancel-delivery, acknowledge-notification,
+                                                            # channel-health, statistics, export-history,
+                                                            # task-scheduler-examples
   utils/
     __init__.py
     logging.py                                        # [v2.0 Step 7, live] get_logger()/StructuredFormatter —
@@ -396,6 +411,42 @@ src/
       platform_health_detector.py                                             # connector_failure/recovered
       discovery_detector.py                                                    # discovery_found_new_platform,
                                                                                  # platform_became_accessible
+  notifications/                                        # [live, new package, v2.5 Step 15] the Notification
+                                                          # Delivery Engine — see 31_Notification_Delivery.md
+    __init__.py                                            # imports channels/ and templates/ -> self-registration
+    exceptions.py                                            # NotificationException hierarchy
+    metadata.py                                               # NotificationChannelMetadata
+    models.py                                                  # NotificationPreference/Version, ChannelResult, Message,
+                                                                 # Attempt, Digest, Batch, Delivery/DeliveryStatus,
+                                                                 # Eligibility, Statistics, Health, Policy, Configuration
+    base_channel.py                                             # NotificationChannel (ABC) — configure/validate_
+                                                                  # configuration/supports/health_check/preview/send/
+                                                                  # send_batch/serialize_result/channel_info
+    registry.py                                                  # NotificationChannelRegistry, register_notification_channel()
+    factory.py                                                    # NotificationChannelFactory
+    base_template.py                                               # NotificationTemplate (ABC), TemplateContext, RenderedTemplate
+    template_registry.py                                            # NotificationTemplateRegistry, register_notification_template()
+    service.py                                                       # thin storage orchestration (mirrors monitoring/service.py)
+    eligibility.py                                                    # evaluate_event()/explain_eligibility() — content-based only
+    quiet_hours.py                                                     # is_in_quiet_hours()/next_permitted_time() — timezone-aware
+    rate_limiting.py                                                    # is_rate_limited()/record_send()
+    retry.py                                                             # is_retryable()/should_dead_letter()/compute_next_attempt_at()
+    scheduling.py                                                         # next_digest_time/is_digest_due/next_delivery_time/
+                                                                            # task_scheduler_command_examples
+    statistics.py                                                          # compute_statistics()
+    feedback_integration.py                                                 # record_user_reaction() — never called automatically
+    engine.py                                                                # NotificationEngine — preference lifecycle + delivery workflow
+    channels/
+      __init__.py                                                            # eager imports -> self-registration
+      console_channel.py                                                       # ConsoleNotificationChannel — always enabled
+      file_channel.py                                                          # FileNotificationChannel — always enabled, never overwrites
+      email_channel.py                                                         # EmailNotificationChannel — SMTP, disabled until configured
+      webhook_channel.py                                                       # WebhookNotificationChannel — HTTP POST, disabled until configured
+    templates/
+      __init__.py                                                            # eager imports -> self-registration
+      helpers.py                                                              # apartment_for_event/apartment_image_paths/report_links_for_run
+      event_alert_templates.py                                                # 6 immediate alert templates, one shared base
+      digest_templates.py                                                     # daily_digest/weekly_digest, one shared base
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

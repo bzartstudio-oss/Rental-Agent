@@ -610,6 +610,212 @@ Append-only, one row per generated report file.
 | `path` | TEXT | — |
 | `generated_at` | TEXT (ISO 8601) | — |
 
+### `notification_preferences` — new (v2.5 Step 15, live)
+
+One *current-state* row per preference — mutable, like `saved_searches`, but
+the actual preference definition never changes in place; see
+`notification_preference_versions` below. `update_preference_metadata()`
+refreshes `enabled`/`updated_at`/`current_version` only.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `preference_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `profile_id` | TEXT, `NOT NULL` | Feedback profile this preference belongs to |
+| `saved_search_id` | TEXT, nullable, FK → `saved_searches.saved_search_id` | `NULL` = applies to every saved search for this profile |
+| `current_version` | INTEGER | Points at the `notification_preference_versions` row in effect |
+| `enabled` | INTEGER (bool) | Disabled preferences never match an event |
+| `created_at` / `updated_at` | TEXT (ISO 8601) | `created_at` never changes after insert |
+
+### `notification_preference_versions` — new (v2.5 Step 15, live)
+
+Append-only: "Never overwrite preferences. Every change creates a new
+immutable NotificationPreferenceVersion" (the mission's own words) — one
+immutable row per edit, `UNIQUE (preference_id, version)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `preference_id` | TEXT FK → `notification_preferences.preference_id` | — |
+| `version` | INTEGER | 1, 2, 3, ... per preference |
+| `enabled_channels_json` | TEXT (JSON) | e.g. `["console", "file"]` |
+| `event_types_json` | TEXT (JSON) | Empty = every event type eligible |
+| `immediate_event_types_json` / `digest_event_types_json` | TEXT (JSON) | Never hardcoded — configurable per preference |
+| `minimum_severity` / `minimum_significance` | TEXT nullable / REAL | Content-based eligibility thresholds |
+| `digest_frequency` | TEXT, nullable | `"hourly"` / `"daily"` / `"weekly"` / `"manual"` / `NULL` (no digest) |
+| `quiet_hours_start` / `quiet_hours_end` | TEXT (`"HH:MM"`), nullable | — |
+| `timezone` | TEXT | IANA name, e.g. `"Europe/Madrid"` |
+| `max_per_hour` / `max_per_day` | INTEGER, nullable | Rate limits, per channel |
+| `include_images` / `include_original_urls` / `include_ranking_explanation` / `include_geo_summary` / `include_preference_explanation` / `include_report_links` | INTEGER (bool) | — |
+| `language` / `format` | TEXT | `format` is `"text"` or `"html"` |
+| `metadata_json` | TEXT (JSON) | — |
+| `created_at` | TEXT (ISO 8601) | — |
+
+### `notification_templates` — new (v2.5 Step 15, live)
+
+Append-only registry snapshot — mirrors `filter_definitions`'
+`sync_filter_definitions()` shape: `sync_registered_templates()` inserts a row
+whenever a template name/version pair isn't already recorded.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `template_name` | TEXT | e.g. `"immediate_apartment_alert"`, `"daily_digest"`, `UNIQUE (template_name, version)` |
+| `version` | INTEGER | — |
+| `channel_compatibility_json` | TEXT (JSON) | Empty = every channel |
+| `description` | TEXT | The template class's own docstring |
+| `registered_at` | TEXT (ISO 8601) | — |
+
+### `notification_batches` — new (v2.5 Step 15, live)
+
+One current-state row per `process_pending_deliveries()` / `process_due_digests()`
+/ `retry_due_failures()` call. `update_batch()` fills in `completed_at`/the
+three outcome counters/`notes` once the run finishes.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `batch_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `batch_type` | TEXT | `"immediate"` / `"digest"` / `"retry"` |
+| `started_at` / `completed_at` | TEXT (ISO 8601), `completed_at` nullable | — |
+| `deliveries_attempted` / `deliveries_succeeded` / `deliveries_failed` | INTEGER | — |
+| `notes` | TEXT, nullable | — |
+
+### `notification_deliveries` — new (v2.5 Step 15, live)
+
+One current-state row per logical notification — mutable (`status`/
+`attempt_count`/`next_attempt_at`/`acknowledged`/`notes` all update in place
+via `update_delivery()`/`acknowledge_delivery()`), but never duplicated:
+`idempotency_key` is stable per (preference, event) or (preference, digest
+period), so a repeated delivery attempt always reuses the same row.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `delivery_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `profile_id` | TEXT | — |
+| `preference_id` | TEXT FK → `notification_preferences.preference_id` | — |
+| `preference_version` | INTEGER | Which immutable version produced this delivery |
+| `saved_search_id` | TEXT, nullable, FK → `saved_searches.saved_search_id` | — |
+| `saved_search_version` | INTEGER, nullable | — |
+| `batch_id` | TEXT, nullable, FK → `notification_batches.batch_id` | — |
+| `is_digest` | INTEGER (bool) | — |
+| `status` | TEXT | One of `NotificationDeliveryStatus`'s 11 values |
+| `channels_json` | TEXT (JSON) | Channels this delivery is/was attempted through |
+| `dedup_key` / `idempotency_key` (`UNIQUE`) | TEXT | Idempotency and dedup keying — see `docs/31` "Retry Policy" |
+| `next_attempt_at` | TEXT (ISO 8601), nullable | Retry/deferral scheduling |
+| `attempt_count` | INTEGER | — |
+| `acknowledged` | INTEGER (bool) | Default `0` |
+| `notes` | TEXT, nullable | e.g. `"Deferred: quiet hours"` / `"Suppressed: rate limit reached..."` — never a bare suppression with no explanation |
+| `created_at` | TEXT (ISO 8601) | — |
+
+### `notification_delivery_events` — new (v2.5 Step 15, live)
+
+Append-only link table — every delivery (immediate or digest) links to its
+`monitoring_events` via this table; a digest's extra fields live on
+`notification_digests` (1:1 with a delivery) rather than duplicating this
+link shape.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `delivery_id` | TEXT FK → `notification_deliveries.delivery_id` | — |
+| `event_id` | TEXT FK → `monitoring_events.event_id` | — |
+
+### `notification_digests` — new (v2.5 Step 15, live)
+
+Append-only, `UNIQUE (delivery_id)` — 1:1 with the `notification_deliveries`
+row it extends with digest-specific fields. Exact event membership is *not*
+duplicated onto this table — `service.get_digest_for_delivery()` reads it back
+from `notification_delivery_events` (filtered to this `delivery_id`), the
+same single link table every delivery (immediate or digest) already uses.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `delivery_id` | TEXT, `UNIQUE`, FK → `notification_deliveries.delivery_id` | — |
+| `frequency` | TEXT | `"hourly"` / `"daily"` / `"weekly"` / `"manual"` |
+| `period_start` / `period_end` | TEXT (ISO 8601) | The exact window this digest summarizes |
+| `generated_at` | TEXT (ISO 8601) | — |
+
+### `notification_attempts` — new (v2.5 Step 15, live)
+
+Append-only — one row per per-channel send attempt, never overwritten;
+`attempt_number` plus `channel` distinguishes retries.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `delivery_id` | TEXT FK → `notification_deliveries.delivery_id` | — |
+| `channel` | TEXT | e.g. `"console"` / `"email"` |
+| `attempt_number` | INTEGER | — |
+| `status` | TEXT | `"delivered"` / `"failed"` |
+| `error` / `error_category` | TEXT, nullable | `error` is redacted of any configured secret before storage |
+| `duration_ms` | INTEGER, nullable | — |
+| `attempted_at` | TEXT (ISO 8601) | — |
+
+### `notification_messages` — new (v2.5 Step 15, live)
+
+Append-only — one row per rendered message actually handed to a channel's
+`send()`; reproducible from `template_name`/`template_version` plus the
+stored content.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `delivery_id` | TEXT FK → `notification_deliveries.delivery_id` | — |
+| `channel` | TEXT | — |
+| `subject` | TEXT, nullable | — |
+| `body_text` | TEXT | — |
+| `body_html` | TEXT, nullable | Only populated when the preference's `format` is `"html"` |
+| `template_name` / `template_version` | TEXT / INTEGER | — |
+| `language` | TEXT | — |
+| `metadata_json` | TEXT (JSON) | `event_ids`/`original_listing_urls`/`report_links`/`attachments` all fold into this one JSON blob (plus e.g. `attempt_number`) rather than each getting its own column — `service.record_message()`'s own translation, not a separate schema per field |
+| `generated_at` | TEXT (ISO 8601) | — |
+
+### `rate_limit_observations` — new (v2.5 Step 15, live)
+
+Append-only — one row per successful send, the raw data `rate_limiting
+.is_rate_limited()` counts over a rolling hourly/daily window. Never deleted,
+so old observations naturally age out of the window rather than requiring
+cleanup logic.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `profile_id` | TEXT | — |
+| `channel` | TEXT | — |
+| `occurred_at` | TEXT (ISO 8601) | — |
+
+### `channel_health_observations` — new (v2.5 Step 15, live)
+
+Append-only — one row per send attempt (success or failure), the raw data
+`service.compute_channel_health()` summarizes into a `NotificationHealth`
+snapshot for the CLI's `channel-health` command.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `channel` | TEXT | — |
+| `succeeded` | INTEGER (bool) | — |
+| `error` | TEXT, nullable | Redacted of any configured secret |
+| `duration_ms` | INTEGER, nullable | — |
+| `observed_at` | TEXT (ISO 8601) | — |
+
+### `notification_acknowledgements` — new (v2.5 Step 15, live)
+
+Append-only audit trail of *who*/*when* acknowledged a delivery, kept
+separate from `notification_deliveries.acknowledged` (the cheap current-state
+lookup) — same "fast flag + full history" split `event_acknowledgements`
+already established for monitoring.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `delivery_id` | TEXT FK → `notification_deliveries.delivery_id` | — |
+| `acknowledged_at` | TEXT (ISO 8601) | — |
+| `acknowledged_by` / `note` | TEXT, nullable | — |
+
 ### `knowledge_entries` (v1.1, live — unchanged)
 
 Curated reference data. `id`, `category`, `key`, `value_json`, `source`, `updated_at`.
@@ -652,6 +858,19 @@ saved_searches 1──* saved_search_versions
           │                       │ 1──* event_acknowledgements
           │           1──* monitoring_statistics
           │           1──* report_artifacts
+
+notification_preferences 1──* notification_preference_versions   (NEW, v2.5 Step 15)
+   │              *──1 saved_searches (saved_search_id, nullable)
+   1──* notification_deliveries *──1 notification_batches (batch_id, nullable)
+          │               │ *──1 saved_searches (saved_search_id, nullable)
+          │               │ 1──* notification_delivery_events *──1 monitoring_events
+          │               │ 1──1 notification_digests (delivery_id UNIQUE)
+          │               │ 1──* notification_attempts
+          │               │ 1──* notification_messages
+          │               │ 1──* notification_acknowledgements
+          │
+notification_templates — standalone registry snapshot, not FK-linked   (NEW)
+rate_limit_observations / channel_health_observations — standalone, keyed by profile_id/channel   (NEW)
 ```
 
 ## Storage Format Outside SQLite

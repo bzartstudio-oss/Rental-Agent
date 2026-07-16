@@ -429,3 +429,98 @@ change events, a broken second connector produces a `PARTIAL` run (not `FAILED`,
 not a crash) while keeping `demo_platform`'s own successful results, and all four
 report artifacts are written and reference the real original listing URL. New
 `docs/30_Continuous_Monitoring.md`. Full detail in `learning/architecture_notes.md`.
+
+## 2026-07-16 — Version 2.5 Step 15: Notification Delivery Engine
+
+Explicit instruction: monitoring detects and creates events; notification
+delivery separately sends eligible events through configured channels — keep
+these responsibilities completely separate. NOT email/webhook/delivery logic
+inside `MonitoringEngine`, NOT a web dashboard, NOT marketing/unsolicited
+messaging, NOT SMS/mobile push/autonomous outbound messaging this sprint.
+
+New `src/notifications/` package, a 10th (`NotificationChannel`) and 11th
+(`NotificationTemplate`) application of this codebase's established self-
+registration shape. Four channels ship this sprint: `console`/`file` (always
+enabled, zero credentials), `email`/`webhook` (disabled by default, enabled
+only once genuinely configured). Investigation before writing code confirmed
+the "domain-layer dataclass distinct from storage-layer dataclass" pattern
+(`monitoring/models.py` vs. `storage/models.py`) and the "Protocol + one real
+implementation" injectable-seam pattern (`discovery.automatic.verification
+.PageFetcher`) both extend cleanly into notifications — `EmailTransport`/
+`HttpTransport` mirror `PageFetcher` directly, so the test suite never opens a
+real SMTP connection or sends a request to a real endpoint.
+
+The mission's own ELIGIBILITY section lists quiet-hours/rate-limits as
+eligibility factors, but its own WORKFLOW diagram lists "Evaluate eligibility"
+and "Apply quiet hours and rate limits" as two separate steps. Resolved by
+splitting responsibility: `eligibility.py` handles content-based checks only
+(preference enabled, event type/severity/significance, channel availability);
+`quiet_hours.py`/`rate_limiting.py` handle the time-dependent, deferral-
+capable checks, applied by `NotificationEngine` as its own explicit
+subsequent step — documented directly in `eligibility.py`'s own module
+docstring so the split doesn't look accidental later.
+
+Digest scheduling was deliberately *not* given its own `notification_schedules`
+table — `next_digest_time()` derives "next due" from the most recent
+`notification_digests.period_end` row plus a frequency interval, avoiding a
+redundant schema addition the mission's own DATABASE section didn't
+literally require (it names `digest schedule` as an index target, which
+`notification_deliveries`'s existing indexes already satisfy for a digest-type
+delivery). Similarly, one `notification_delivery_events` link table serves
+both immediate and digest deliveries — mission text said "digest-event
+links," but generalizing to "every delivery's event links" was the same table
+shape without inventing a second, parallel one.
+
+Mid-session bug hunts, both caught by the test suite rather than manual
+smoke-testing: (1) `get_due_retries()` originally selected only
+`status = 'retry_scheduled'`, missing `partially_delivered` deliveries that
+still have failed channels worth retrying — "one channel failure does not
+prevent another channel from succeeding" applies symmetrically to retries,
+not just first attempts; (2) `smtplib.SMTPException` subclasses `OSError` in
+this Python version, so the email channel's original except-clause ordering
+(`except (SMTPConnectError, SMTPServerDisconnected, TimeoutError, OSError)`
+before `except SMTPException`) made the `"server_error"` category
+unreachable for any generic SMTP exception — every one of them was being
+caught by the earlier `OSError` clause and miscategorized as
+`"connection_error"`. Found while writing
+`test_generic_smtp_exception_is_categorized_as_server_error`, fixed by
+reordering except clauses most-specific-first and adding a comment
+explaining why the ordering matters (the fix would silently regress if a
+future edit re-ordered them back).
+
+Retries are idempotent by construction: `NotificationDelivery
+.idempotency_key` is stable per (preference, event) or (preference, digest
+period); `retry_due_failures()`/`retry_delivery_now()` always resolve and
+reuse the same delivery row, computing "already delivered" channels from
+`NotificationAttempt` history so a channel that already succeeded is never
+re-sent — proven directly by
+`test_retrying_is_idempotent_and_only_reattempts_channels_not_yet_delivered`
+(one always-succeeding channel + one always-failing test-only channel,
+retried twice, asserting exactly one attempt row for the former and two for
+the latter).
+
+156 new tests (1186 total: 1030 existing untouched + 156 new) — migration
+tests for all 12 tables/indexes, channel registry self-registration/enabled-
+vs-disabled tests, Console/File channel tests (including a deliberate
+path-traversal attempt via an engineered `delivery_id` and a same-tuple
+no-overwrite collision), Email/Webhook channel tests against fake/mock
+transports (auth failure, connection error, generic SMTP exception, HTTP
+4xx/5xx, HMAC signature verification, domain allow/deny lists — never a real
+account or live endpoint), template rendering tests for all 8 templates
+against real `MonitoringEvent`/`Apartment` fixtures, preference-versioning
+tests (new version never touches the old one), eligibility tests (every
+ineligible reason named), timezone-aware quiet-hours tests (same-day and
+midnight-wrapping windows, naive-datetime handling), rate-limiting tests
+(hourly/daily windows, per-channel/per-profile isolation), retry-policy tests
+(backoff growth/cap, dead-letter threshold), a full `NotificationEngine`
+integration suite (immediate delivery, failure isolation, idempotent
+retries, dead-lettering, quiet-hours deferral, critical-event bypass,
+rate-limit suppression, manual/scheduled digest generation, reproducible
+digest membership, acknowledgement, cancellation), feedback-integration
+tests (only an explicit reaction produces a `FeedbackEvent`, never delivery
+alone), statistics tests, scheduler-interface tests, a full
+`notification_cli.py` command-surface test, and cross-cutting security tests
+(no delivery without an explicit opt-in preference, no channel ever echoes a
+configured secret through `channel_info()`). New
+`docs/31_Notification_Delivery.md`. Full detail in
+`learning/architecture_notes.md`.

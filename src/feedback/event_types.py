@@ -27,6 +27,8 @@ class FeedbackEventType:
     SEARCH_REPEATED = "search_repeated"
     RESULT_OPENED = "result_opened"
     ORIGINAL_LISTING_OPENED = "original_listing_opened"
+    NOTIFICATION_OPENED = "notification_opened"  # v2.5 Step 15 — Notification Delivery Engine
+    NOTIFICATION_DISMISSED = "notification_dismissed"  # v2.5 Step 15 — Notification Delivery Engine
 
 
 # Every named constant above, for validation/enumeration convenience only — a
@@ -65,5 +67,6 @@ NEGATIVE_EVENT_TYPES: frozenset[str] = frozenset(
         FeedbackEventType.IGNORED,
         FeedbackEventType.MANUAL_RANKING_DOWN,
         FeedbackEventType.FILTER_REMOVED,
+        FeedbackEventType.NOTIFICATION_DISMISSED,
     }
 )

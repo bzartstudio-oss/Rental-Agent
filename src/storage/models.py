@@ -708,3 +708,227 @@ class ReportArtifactRecord:
     path: str
     generated_at: datetime
     id: int | None = None
+
+
+@dataclass
+class NotificationPreferenceRecord:
+    """Mirrors one row of `notification_preferences` (migration 0010, v2.5
+    Step 15) — one current-state row per preference (mutable, like
+    `saved_searches`), but its actual settings never change in place; see
+    `NotificationPreferenceVersionRecord`.
+    """
+
+    preference_id: str
+    profile_id: str
+    current_version: int
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    saved_search_id: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class NotificationPreferenceVersionRecord:
+    """Mirrors one row of `notification_preference_versions` (migration 0010)
+    — append-only, one immutable row per edit.
+    """
+
+    preference_id: str
+    version: int
+    enabled_channels: list[str]
+    event_types: list[str]
+    minimum_significance: float
+    immediate_event_types: list[str]
+    digest_event_types: list[str]
+    timezone: str
+    include_images: bool
+    include_original_urls: bool
+    include_ranking_explanation: bool
+    include_geo_summary: bool
+    include_preference_explanation: bool
+    include_report_links: bool
+    language: str
+    format: str
+    metadata: dict
+    created_at: datetime
+    minimum_severity: str | None = None
+    digest_frequency: str | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+    max_per_hour: int | None = None
+    max_per_day: int | None = None
+    id: int | None = None
+
+
+@dataclass
+class NotificationTemplateRecord:
+    """Mirrors one row of `notification_templates` (migration 0010) —
+    append-only, populated by syncing self-registered template classes'
+    metadata into the database (mirrors
+    `filter_engine.sync_filter_definitions()`'s own pattern), never a
+    user-created row.
+    """
+
+    template_name: str
+    version: int
+    channel_compatibility: list[str]
+    description: str
+    registered_at: datetime
+    id: int | None = None
+
+
+@dataclass
+class NotificationBatchRecord:
+    """Mirrors one row of `notification_batches` (migration 0010) —
+    append-only header row per `NotificationEngine` delivery-engine pass
+    (`batch_type` is one of `immediate`/`digest`/`retry`).
+    """
+
+    batch_id: str
+    batch_type: str
+    started_at: datetime
+    completed_at: datetime | None = None
+    deliveries_attempted: int = 0
+    deliveries_succeeded: int = 0
+    deliveries_failed: int = 0
+    notes: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class NotificationDeliveryRecord:
+    """Mirrors one row of `notification_deliveries` (migration 0010) — one
+    current-state row per logical notification (immediate or digest); `status`/
+    `next_attempt_at`/`attempt_count`/`acknowledged` genuinely change as
+    retries proceed, mirroring `monitoring_runs`'/`platform_candidates`' own
+    "current-state row" shape.
+    """
+
+    delivery_id: str
+    profile_id: str
+    preference_id: str
+    preference_version: int
+    is_digest: bool
+    status: str
+    channels: list[str]
+    dedup_key: str
+    idempotency_key: str
+    created_at: datetime
+    batch_id: str | None = None
+    saved_search_id: str | None = None
+    saved_search_version: int | None = None
+    next_attempt_at: datetime | None = None
+    attempt_count: int = 0
+    acknowledged: bool = False
+    notes: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class NotificationDeliveryEventRecord:
+    """Mirrors one row of `notification_delivery_events` (migration 0010) —
+    append-only link table recording exactly which `monitoring_events` rows
+    fed one delivery. "Store the exact event IDs included in each digest"
+    (the mission's own words), generalized to cover a single-event immediate
+    notification the same way.
+    """
+
+    delivery_id: str
+    event_id: str
+    id: int | None = None
+
+
+@dataclass
+class NotificationDigestRecord:
+    """Mirrors one row of `notification_digests` (migration 0010) —
+    append-only, one row of digest-specific extra metadata per delivery where
+    `is_digest` is true (1:1 with `notification_deliveries`).
+    """
+
+    delivery_id: str
+    frequency: str
+    period_start: datetime
+    period_end: datetime
+    generated_at: datetime
+    id: int | None = None
+
+
+@dataclass
+class NotificationAttemptRecord:
+    """Mirrors one row of `notification_attempts` (migration 0010) —
+    append-only, one row per single channel send attempt.
+    """
+
+    delivery_id: str
+    channel: str
+    attempt_number: int
+    status: str
+    attempted_at: datetime
+    error: str | None = None
+    error_category: str | None = None
+    duration_ms: int | None = None
+    id: int | None = None
+
+
+@dataclass
+class NotificationMessageRecord:
+    """Mirrors one row of `notification_messages` (migration 0010) —
+    append-only, the exact rendered content sent (or that would be sent) for
+    one delivery on one channel — reproducible: the same template
+    name/version plus the same stored data always produces the same message.
+    """
+
+    delivery_id: str
+    channel: str
+    body_text: str
+    template_name: str
+    template_version: int
+    language: str
+    metadata: dict
+    generated_at: datetime
+    subject: str | None = None
+    body_html: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class RateLimitObservationRecord:
+    """Mirrors one row of `rate_limit_observations` (migration 0010) —
+    append-only ledger of send timestamps per profile/channel, used to compute
+    rate-limit window counts.
+    """
+
+    profile_id: str
+    channel: str
+    occurred_at: datetime
+    id: int | None = None
+
+
+@dataclass
+class ChannelHealthObservationRecord:
+    """Mirrors one row of `channel_health_observations` (migration 0010) —
+    append-only, one row per channel `health_check()`/send-attempt outcome.
+    """
+
+    channel: str
+    succeeded: bool
+    observed_at: datetime
+    error: str | None = None
+    duration_ms: int | None = None
+    id: int | None = None
+
+
+@dataclass
+class NotificationAcknowledgementRecord:
+    """Mirrors one row of `notification_acknowledgements` (migration 0010) —
+    append-only audit trail of *who*/*when* acknowledged a delivery, kept
+    separate from `notification_deliveries.acknowledged` (the cheap
+    current-state lookup) so both a fast check and a full history exist.
+    """
+
+    delivery_id: str
+    acknowledged_at: datetime
+    acknowledged_by: str | None = None
+    note: str | None = None
+    id: int | None = None

@@ -105,6 +105,37 @@ production-code addition to `core/agent.py` is one optional constructor
 parameter (`allowed_platform_ids`, `None` by default) so a saved search can
 narrow which already-discovered, connector-available platforms get queried.
 
+## The v2.5 Notification Delivery Layer (Step 15)
+
+`NotificationEngine` (`src/notifications/engine.py`) sits **beside**
+`MonitoringEngine`, never inside it — monitoring detects and records change;
+notifications separately decide whether/how/when to tell a human about it:
+
+```
+MonitoringEvent rows (already stored by MonitoringEngine, untouched by this layer)
+        │
+        ▼
+NotificationEngine.process_pending_deliveries() / .process_due_digests() / .retry_due_failures()
+        │
+        ├─ resolve NotificationPreferenceVersion (per profile / per saved search)
+        ├─ eligibility.evaluate_event()                (content: type/severity/significance/opt-in)
+        ├─ quiet_hours.is_in_quiet_hours() / rate_limiting.is_rate_limited()   (time-dependent, deferral-capable)
+        ├─ immediate-or-digest routing
+        ├─ NotificationTemplateRegistry.for_event_type() → RenderedTemplate
+        ├─ NotificationChannelFactory.resolve() → send() independently, per channel
+        └─ NotificationDelivery status + NotificationAttempt history + NotificationStatistics
+        │
+        ▼
+NotificationDelivery (DELIVERED / PARTIALLY_DELIVERED / FAILED / RETRY_SCHEDULED / SUPPRESSED / ...)
+```
+
+`NotificationEngine` consumes `MonitoringEvent`s exclusively through
+`src.monitoring.service`'s public read functions — it never reaches into
+`MonitoringEngine` internals, and a notification failure never fails, retries,
+or blocks a monitoring run. Monitoring must work identically whether
+notifications are fully disabled, mid-outage, or never configured at all. See
+[31_Notification_Delivery.md](31_Notification_Delivery.md).
+
 ## Module Responsibility Table
 
 | Module (package) | Responsibility | Must NOT contain | Doc |
@@ -133,6 +164,7 @@ narrow which already-discovered, connector-available platforms get queried.
 | `feedback/` **(live, v2.5 Step 12)** | The User Feedback and Preference Learning Engine — 23 self-registering preference rules learning from explicit, traceable evidence (append-only events), deterministic decay/confidence math, a `ranking_v2` adapter producing only *suggested* weights | Opaque ML/prediction; direct coupling to individual `RankingRule`s; inferring sensitive personal characteristics from behavior | [28_User_Feedback_and_Preference_Learning.md](28_User_Feedback_and_Preference_Learning.md) |
 | `discovery/automatic/` **(live, v2.5 Step 13)** | The Automatic Platform Discovery Agent — a provider-independent framework (2 self-registering sources: curated seed list, manual URLs) that discovers, deduplicates, classifies (deterministic keyword scoring), verifies, and estimates capabilities for candidate rental platforms, storing them append-only alongside the existing Platform Registry | Generating connector code; bypassing authentication/CAPTCHAs/robots restrictions/rate limits; automatically activating a discovered platform (only an approved connector/API integration does that) | [29_Automatic_Platform_Discovery.md](29_Automatic_Platform_Discovery.md) |
 | `monitoring/` **(live, v2.5 Step 14)** | The Continuous Monitoring & Saved Search Engine — versioned saved searches, a database-backed scheduling/claim interface, 5 self-registering event detectors comparing consecutive `RentalResearchAgent` runs, deterministic significance/dedup/removal-threshold logic, full+change-only HTML/JSON reports | Any single stage's business logic (reuses `RentalResearchAgent`/`FilterEngine`/`GeographicEngine`/`RankingEngineV2`/`FeedbackEngine`/`AutomaticDiscoveryAgent` unchanged); email/SMS/Slack/push delivery; a web dashboard; autonomous connector generation | [30_Continuous_Monitoring.md](30_Continuous_Monitoring.md) |
+| `notifications/` **(live, v2.5 Step 15)** | The Notification Delivery Engine — versioned notification preferences, deterministic/explainable eligibility, quiet-hours/rate-limiting, immediate-vs-digest routing, a self-registering channel plugin system (Console/File always-enabled, Email/Webhook disabled until configured) and template registry, idempotent retries with exponential backoff | Detecting/generating `MonitoringEvent`s itself (reuses `MonitoringEngine`/`monitoring.service` unchanged, read-only); a web dashboard; marketing/unsolicited messaging; SMS/mobile push; inferring preference merely from a delivery (only an explicit `feedback_integration.record_user_reaction()` call does that) | [31_Notification_Delivery.md](31_Notification_Delivery.md) |
 
 ## The Independence Guardrail
 

@@ -68,7 +68,7 @@ class MigrationFromV1DatabaseTests(unittest.TestCase):
             self.assertIn("platform_performance_observations", tables)
 
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([r[0] for r in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9])  # every real migration applied, in order
+            self.assertEqual([r[0] for r in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])  # every real migration applied, in order
         finally:
             conn.close()
 
@@ -88,7 +88,7 @@ class RepeatedStartupTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([r[0] for r in rows], [1, 2, 3, 4, 5, 6, 7, 8, 9])  # each recorded exactly once, not twice
+            self.assertEqual([r[0] for r in rows], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])  # each recorded exactly once, not twice
         finally:
             conn.close()
 
@@ -233,7 +233,7 @@ class Migration0002IndexTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9])
+            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
         finally:
             conn.close()
 
@@ -259,6 +259,63 @@ class Migration0003AnalysisMetricsColumnsTests(unittest.TestCase):
             self.assertIn("confidence", columns)
             self.assertIn("evidence_json", columns)
             self.assertIn("analyzer_version", columns)
+        finally:
+            conn.close()
+
+
+class Migration0010NotificationTablesTests(unittest.TestCase):
+    """Step 15: 0010_notification_delivery.sql — 12 tables for the Notification
+    Delivery Engine (preferences/versions/templates/batches/deliveries/
+    delivery-events/digests/attempts/messages/rate-limit and channel-health
+    observations/acknowledgements) plus their indexes.
+    """
+
+    def setUp(self) -> None:
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmp_dir.name) / "test.db"
+
+    def tearDown(self) -> None:
+        self._tmp_dir.cleanup()
+
+    def test_all_twelve_notification_tables_exist(self) -> None:
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            for expected in [
+                "notification_preferences", "notification_preference_versions", "notification_templates",
+                "notification_batches", "notification_deliveries", "notification_delivery_events",
+                "notification_digests", "notification_attempts", "notification_messages",
+                "rate_limit_observations", "channel_health_observations", "notification_acknowledgements",
+            ]:
+                self.assertIn(expected, tables)
+        finally:
+            conn.close()
+
+    def test_key_indexes_exist(self) -> None:
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+            for expected in [
+                "idx_notif_deliveries_profile_created", "idx_notif_deliveries_status_next",
+                "idx_notif_attempts_channel_status", "idx_notif_delivery_events_event",
+                "idx_notif_deliveries_unacknowledged",
+            ]:
+                self.assertIn(expected, indexes)
+        finally:
+            conn.close()
+
+    def test_applying_it_twice_does_not_error(self) -> None:
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)
+        Database(db_path=self.db_path, migrations_dir=_MIGRATIONS_DIR)  # must not raise
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
         finally:
             conn.close()
 

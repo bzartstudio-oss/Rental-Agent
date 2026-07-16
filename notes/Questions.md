@@ -20,12 +20,21 @@ Open questions that need an answer from the user (or from research) before a dec
   `discovery-cli approve-candidate` currently lets any operator promote a candidate
   into the registry with `connector_available=False`, which is honest but doesn't
   yet enforce any approval workflow beyond "a human ran the command." Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
-- Which delivery channel(s) — email, SMS, Slack, push — should be built first for
-  Continuous Monitoring's `MonitoringEvent`s, and with what per-user delivery
-  preferences? Explicitly out of scope for v2.5 Step 14; the event model
-  (`notification_eligible`, `monitoring-cli list-events`/`export-events`) is
-  already a complete, standalone consumer surface a delivery layer would read from
-  without any change to how events are generated. Blocks: [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md)
+- Which additional notification channel (Slack, Teams, Telegram, Discord, SMS,
+  mobile push) should be built next? The channel plugin system supports adding
+  one with zero `NotificationEngine` changes, but none beyond Console/File/Email/
+  Webhook ship in v2.5 Step 15 — needs a vendor/cost/ToS decision this mission
+  didn't ask for. Blocks: [../docs/31_Notification_Delivery.md](../docs/31_Notification_Delivery.md)
+- Should digest grouping eventually span multiple saved searches into one
+  combined email per profile, rather than one digest per (preference, period)?
+  Today each `NotificationPreference` produces its own separate digest even when
+  a profile has several preferences — fine for one saved search per profile, but
+  a profile monitoring many saved searches might prefer a single consolidated
+  digest. Blocks: [../docs/31_Notification_Delivery.md](../docs/31_Notification_Delivery.md)
+- What should `NotificationPolicy`'s production defaults be (`retry_max_attempts`,
+  backoff base/max, `dead_letter_after_attempts`) once delivery runs somewhere
+  other than a manually-triggered CLI — a future worker service or scheduled
+  deployment decision, not answered by this sprint. Blocks: [../docs/31_Notification_Delivery.md](../docs/31_Notification_Delivery.md)
 - Does `SavedSearchVersion.geographic_destinations` need a richer structured shape
   than "a list of `{country, region, city}` dicts"? Only the first entry is used
   today (`_refresh_discovery()` reads `geographic_destinations[0]`) — fine for a
@@ -38,13 +47,24 @@ Open questions that need an answer from the user (or from research) before a dec
 
 ## Answered
 
+- ~~Which delivery channel(s) should be built first for Continuous Monitoring's
+  `MonitoringEvent`s, and with what per-user delivery preferences?~~
+  **Console + File (zero credentials) and Email + Webhook (configurable): v2.5
+  Step 15** (2026-07-16) — a full `NotificationEngine` with versioned per-profile/
+  per-saved-search preferences, deterministic eligibility, quiet hours, rate
+  limiting, immediate-vs-digest routing, and idempotent retries. SMS/mobile push/
+  a web dashboard remain open — see above. See
+  [../docs/31_Notification_Delivery.md](../docs/31_Notification_Delivery.md).
 - ~~When should continuous monitoring (periodic re-discovery) and notifications be
   scheduled?~~ **Continuous monitoring itself: v2.5 Step 14** (2026-07-16) — a
   database-backed scheduling/claim interface (`due_saved_searches()`/
   `claim_due_run()`/`mark_run_*()`) that any of cron, Windows Task Scheduler, a
-  future worker service, or manual CLI execution can drive; notification
-  *delivery* (email/SMS/Slack/push) remains open, see above. See
-  [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md).
+  future worker service, or manual CLI execution can drive; **notification
+  delivery itself: v2.5 Step 15** (2026-07-16) — `scheduling.next_delivery_time()`/
+  `next_digest_time()`/`task_scheduler_command_examples()`, the same
+  driver-agnostic shape. See
+  [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md),
+  [../docs/31_Notification_Delivery.md](../docs/31_Notification_Delivery.md).
 
 - ~~Which platform/data source should the first connector target?~~ **RentCast**
   (2026-07-15) — a real, developer-facing REST API with self-service auth, a free

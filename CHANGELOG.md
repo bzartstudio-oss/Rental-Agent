@@ -4,6 +4,84 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.7] — 2026-07-16 — Notification Delivery Engine
+
+Monitoring detects change and creates events; this sprint separately decides
+whether/how/when an eligible event reaches a human, through whichever channels
+they configured. Not SMS/mobile push, not a web dashboard, not autonomous/
+marketing messaging. Monitoring and delivery stay completely separate:
+`src/notifications/` never imports `MonitoringEngine`, and a notification
+failure never fails, retries, or blocks a monitoring run.
+
+### Added
+- `src/notifications/` — `NotificationEngine` (preference lifecycle + the
+  full delivery workflow: load undelivered eligible events, resolve preference
+  version, evaluate eligibility, apply quiet hours/rate limits, choose
+  immediate-or-digest, render a template, attempt delivery per channel
+  independently, record attempts, update status/statistics),
+  `NotificationChannelRegistry`/`NotificationChannel` and
+  `NotificationTemplateRegistry`/`NotificationTemplate` (self-registering
+  plugin systems), `eligibility.py` (deterministic/explainable content-based
+  checks), `quiet_hours.py`/`rate_limiting.py` (timezone-aware deferral/
+  suppression), `retry.py` (idempotent exponential backoff + dead-lettering),
+  `scheduling.py` (database-backed due-time interface), `statistics.py`,
+  `feedback_integration.py` (explicit-reaction-only bridge to the Feedback
+  Engine).
+- Four built-in channels: `console`/`file` (always enabled, zero
+  credentials), `email` (provider-independent SMTP, disabled until
+  `smtp_host`/`sender_address` are configured), `webhook` (generic HTTP POST
+  with HMAC signing and domain allow/deny lists, disabled until a valid `url`
+  is configured).
+- Eight built-in templates: 6 immediate alert templates
+  (`immediate_apartment_alert`/`price_change_alert`/`availability_alert`/
+  `better_match_alert`/`listing_removal_alert`/`monitoring_failure_alert`)
+  and 2 digest templates (`daily_digest`/`weekly_digest`).
+- Immutable preference versioning: `NotificationPreference` (current-state
+  row) + `NotificationPreferenceVersion` (append-only) — every edit creates a
+  new version, prior versions stay fully reproducible.
+- Migration `0010_notification_delivery.sql` — 12 tables
+  (`notification_preferences`, `notification_preference_versions`,
+  `notification_templates`, `notification_batches`, `notification_deliveries`,
+  `notification_delivery_events`, `notification_digests`,
+  `notification_attempts`, `notification_messages`,
+  `rate_limit_observations`, `channel_health_observations`,
+  `notification_acknowledgements`). `0001`–`0009` untouched.
+- `src/ui/notification_cli.py` — a new, separate CLI entry point:
+  `create-preference`/`list-preferences`/`view-preference`/
+  `update-preference`/`enable-notifications`/`disable-notifications`/
+  `preview-notification`/`send-test-notification`/`deliver-pending`/
+  `generate-digest`/`retry-due`/`list-deliveries`/`list-failed-deliveries`/
+  `retry-delivery`/`cancel-delivery`/`acknowledge-notification`/
+  `channel-health`/`statistics`/`export-history`/`task-scheduler-examples`.
+- `docs/31_Notification_Delivery.md`.
+- 156 new tests (1186 total).
+
+### Fixed
+- `EmailNotificationChannel.send()`'s except-clause ordering: `smtplib
+  .SMTPException` subclasses `OSError` in this Python version, so a plain
+  `except (..., OSError)` clause placed before `except SMTPException`
+  swallowed every generic SMTP protocol error and miscategorized it as
+  `"connection_error"` instead of `"server_error"` — the `"server_error"`
+  branch was unreachable. Fixed by reordering except clauses most-specific-
+  first. Caught by a new test before this ever ran against a real mail
+  server.
+- `notifications.service.get_due_retries()` originally selected only
+  `status = 'retry_scheduled'` deliveries, missing `partially_delivered`
+  deliveries that still have failed channels worth retrying — one channel
+  failure not blocking another applies symmetrically to retries.
+
+### Explicitly not duplicated / not built this sprint
+- `NotificationEngine` consumes `MonitoringEvent`s exclusively through
+  `monitoring.service`'s public read functions — never `MonitoringEngine`
+  internals, never a write to any `monitoring_*` table.
+- Templates link to already-generated monitoring report files and to the
+  apartment's own URL/images — never a second report-generation
+  implementation.
+- SMS, mobile push, a web dashboard, and autonomous outbound/marketing
+  messaging are explicitly out of scope this sprint, per the mission's own
+  instructions. Future channels (Slack/Teams/Telegram/Discord/SMS/push) are
+  addable later with zero `NotificationEngine` changes, but none ship now.
+
 ## [2.5.6] — 2026-07-16 — Continuous Monitoring and Saved Search Engine
 
 Turns the platform into a repeatable monitoring system — save a reusable search,

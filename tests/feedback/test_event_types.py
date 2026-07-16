@@ -20,6 +20,10 @@ class FeedbackEventTypeTests(unittest.TestCase):
             "manual_rating", "manual_ranking_up", "manual_ranking_down",
             "filter_selected", "filter_removed", "weight_changed", "search_repeated",
             "result_opened", "original_listing_opened",
+            # v2.5 Step 15 (Notification Delivery Engine) additions — explicit
+            # user reactions to a delivered notification, never inferred from
+            # delivery alone.
+            "notification_opened", "notification_dismissed",
         }
         self.assertEqual(KNOWN_EVENT_TYPES, frozenset(expected))
 

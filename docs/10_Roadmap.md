@@ -709,6 +709,60 @@ inside each detector. Significance scoring is deterministic throughout, never
 an ML model. 88 new tests (1030 total: 942 existing untouched + 88 new). Full
 write-up: [30_Continuous_Monitoring.md](30_Continuous_Monitoring.md).
 
+## Version 2.5 Step 15 — Notification Delivery Engine (done 2026-07-16)
+
+Monitoring (Step 14) detects change and creates events; this sprint
+separately decides whether/how/when an eligible event reaches a human —
+explicitly **not** SMS, mobile push, a web dashboard, or autonomous/
+marketing messaging. `src/notifications/` — `NotificationEngine`/
+`NotificationChannelRegistry`/`NotificationChannel`/`NotificationTemplateRegistry`/
+`NotificationTemplate`, a 10th and 11th application of this codebase's
+established self-registering plugin shape. Four channels ship this sprint
+(`console`/`file`, always enabled with zero credentials; `email`/`webhook`,
+disabled until genuinely configured — `is_enabled()` is always a live
+`validate_configuration()` check, never a stored flag) and eight templates (6
+immediate alert templates + 2 digest templates, two shared bases); adding a
+new channel or template requires zero `NotificationEngine` changes.
+
+A `NotificationPreference` is a mutable current-state row whose actual
+definition never changes in place — every edit
+(`NotificationEngine.update_preference()`) appends a new immutable
+`NotificationPreferenceVersion` and bumps the pointer, the same split
+`SavedSearch`/`SavedSearchVersion` already established. Eligibility
+(`eligibility.evaluate_event()`) is deliberately separate from quiet-hours/
+rate-limiting (`quiet_hours.py`/`rate_limiting.py`) — content-based checks vs.
+time-dependent, deferral-capable checks — matching the mission's own
+two-step workflow diagram exactly. Retries are idempotent: `NotificationDelivery
+.idempotency_key` is stable per (preference, event) or (preference, digest
+period), so `retry_due_failures()`/`retry_delivery_now()` always reuse the
+same delivery row and only re-attempt channels that haven't yet succeeded —
+one channel failing (a dead SMTP server) never blocks another channel (console/
+file) from succeeding, and never fails, retries, or blocks the monitoring run
+that produced the underlying event.
+
+New migration `0010_notification_delivery.sql` — 12 tables
+(`notification_preferences`, `notification_preference_versions`,
+`notification_templates`, `notification_batches`, `notification_deliveries`,
+`notification_delivery_events`, `notification_digests`,
+`notification_attempts`, `notification_messages`,
+`rate_limit_observations`, `channel_health_observations`,
+`notification_acknowledgements`); every table but
+`notification_preferences`/`notification_batches`/`notification_deliveries`
+is strictly append-only, mirroring migration 0009's own shape.
+
+`EmailTransport`/`HttpTransport` (`Protocol` + one real implementation each —
+`SmtplibEmailTransport`/`UrllibHttpTransport`) mirror `PageFetcher`'s own
+injectable-seam shape from Step 13, so the test suite never opens a real SMTP
+connection or sends a request to a real endpoint. A genuine bug was found and
+fixed via this discipline: `smtplib.SMTPException` subclasses `OSError` in
+this Python version, so the email channel's original except-clause ordering
+made its `"server_error"` category unreachable for generic SMTP exceptions —
+they were always miscategorized as `"connection_error"`; reordering the
+except clauses (most-specific first) fixed it, caught by
+`test_generic_smtp_exception_is_categorized_as_server_error`. 156 new tests
+(1186 total: 1030 existing untouched + 156 new). Full write-up:
+[31_Notification_Delivery.md](31_Notification_Delivery.md).
+
 ## Beyond Version 2.0 (explicitly deferred)
 
 Renamed from "V2+" to avoid confusion with the new, formal "Version 2.0" above — this

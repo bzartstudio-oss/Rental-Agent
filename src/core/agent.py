@@ -20,6 +20,10 @@ from src.analyzers.engine import process_listings
 from src.connectors.sdk import ConnectorException, ConnectorFactory
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.core.config import OUTPUT_DIR
+from src.feedback import FeedbackEngine
+from src.feedback.filter_integration import record_filter_selection_events
+from src.feedback.models import FeedbackMode
+from src.feedback.ranking_adapter import resolve_ranking_profile
 from src.filter_engine import FilterContext, FilterEngine, FilterHistoryEntry, record_filter_execution
 from src.geography import GeoContext, GeographicEngine, GeoEnrichment, compute_geo_statistics, record_geo_enrichment
 from src.knowledge import knowledge_service
@@ -61,6 +65,9 @@ class RentalResearchAgent:
         filter_engine: FilterEngine | None = None,
         geo_engine: GeographicEngine | None = None,
         ranking_engine_v2: RankingEngineV2 | None = None,
+        feedback_engine: FeedbackEngine | None = None,
+        feedback_profile_id: str | None = None,
+        feedback_mode: FeedbackMode = FeedbackMode.SUGGESTED,
     ) -> None:
         """`data_router`/`ai_router`/`filter_engine`/`geo_engine` are optional and
         default to `None` — every existing caller (every test that doesn't pass them)
@@ -90,7 +97,18 @@ class RentalResearchAgent:
         actual hard-filtering and still writes `search_results.rank`/`.score`
         unchanged; `RankingEngineV2`'s output is passed to `generate_report()`
         alongside `analysis_results`/`geo_enrichments`, the same "diagram vs.
-        implementation reconciliation" reasoning applied a third time.
+        implementation reconciliation" reasoning applied a third time. See
+        docs/28_User_Feedback_and_Preference_Learning.md "Ranking Integration"/
+        "Filter Engine Integration" for `feedback_engine`/`feedback_profile_id`
+        (both required together): every active search criterion is recorded as a
+        `FILTER_SELECTED` feedback event (observational only — never fed back into
+        `request.criteria` or `FilterEngine`'s own hard-filter behavior), and, when
+        `ranking_engine_v2` is also supplied, that run's `RankingProfile` is
+        resolved through `feedback.ranking_adapter.resolve_ranking_profile()` —
+        `EXPLICIT_ONLY`/`SUGGESTED` (the default) leave `ranking_engine_v2.profile`
+        completely untouched; only `feedback_mode=FeedbackMode.ASSISTED` substitutes
+        a learned, evidence-based profile, and even then seeded from the user's own
+        explicit weights as a base.
         """
         self._db = db
         self._output_dir = output_dir
@@ -102,6 +120,9 @@ class RentalResearchAgent:
         self._filter_engine = filter_engine
         self._geo_engine = geo_engine
         self._ranking_engine_v2 = ranking_engine_v2
+        self._feedback_engine = feedback_engine
+        self._feedback_profile_id = feedback_profile_id
+        self._feedback_mode = feedback_mode
 
     def run(self, request: SearchRequest) -> SearchRunResult:
         """Runs one search to completion: persists the request, discovers relevant
@@ -250,9 +271,17 @@ class RentalResearchAgent:
 
         ranked = self._ranking.rank(apartments, request)
 
+        preference_profile = None
+        if self._feedback_engine is not None and self._feedback_profile_id is not None:
+            self._record_filter_feedback(request)
+            with self._db.transaction() as conn:
+                preference_profile = self._feedback_engine.build_preference_profile(
+                    conn, self._feedback_profile_id, mode=self._feedback_mode
+                )
+
         ranking_v2_results: list[RankedApartmentV2] | None = None
         if self._ranking_engine_v2 is not None:
-            ranking_v2_results = self._run_ranking_v2(request, ranked, analysis_results, geo_enrichments)
+            ranking_v2_results = self._run_ranking_v2(request, ranked, analysis_results, geo_enrichments, preference_profile)
 
         ai_summary: str | None = None
         if self._ai_router is not None:
@@ -285,6 +314,7 @@ class RentalResearchAgent:
             ai_summary=ai_summary,
             geo_enrichments=geo_enrichments,
             ranking_v2_results=ranking_v2_results,
+            preference_profile=preference_profile,
         )
         execution_time_ms = int((time.perf_counter() - started_at) * 1000)
 
@@ -424,6 +454,18 @@ class RentalResearchAgent:
         with self._db.transaction() as conn:
             return process_listings(conn, result.listings, platform_id, request.id)
 
+    def _record_filter_feedback(self, request: SearchRequest) -> None:
+        """Records one `FILTER_SELECTED` feedback event per active search
+        criterion — observational only, never fed back into `request.criteria`
+        itself (see `feedback.filter_integration`'s own docstring for why).
+        """
+        now = datetime.now(timezone.utc)
+        with self._db.transaction() as conn:
+            record_filter_selection_events(
+                self._feedback_engine, conn, self._feedback_profile_id, request.criteria,
+                occurred_at=now, search_id=request.id,
+            )
+
     def _run_filter_engine(
         self,
         request: SearchRequest,
@@ -510,6 +552,7 @@ class RentalResearchAgent:
         ranked: list,
         analysis_results: dict,
         geo_enrichments: dict | None,
+        preference_profile=None,
     ) -> list[RankedApartmentV2]:
         """Runs `self._ranking_engine_v2` over v1's own survivors (`ranked`'s
         apartments — already hard-filtered), with a real `RankingContext` built from
@@ -524,6 +567,12 @@ class RentalResearchAgent:
         """
         from src.ranking_v2 import compute_ranking_statistics
 
+        ranking_engine_v2 = self._ranking_engine_v2
+        if preference_profile is not None:
+            resolved_profile = resolve_ranking_profile(preference_profile, self._ranking_engine_v2.profile)
+            if resolved_profile is not self._ranking_engine_v2.profile:
+                ranking_engine_v2 = RankingEngineV2(profile=resolved_profile)
+
         apartments = [entry.apartment for entry in ranked]
         with self._db.transaction() as conn:
             context = RankingContext(
@@ -532,7 +581,7 @@ class RentalResearchAgent:
                 analysis_results=analysis_results,
                 geo_enrichments=geo_enrichments or {},
             )
-            results = self._ranking_engine_v2.rank(apartments, context)
+            results = ranking_engine_v2.rank(apartments, context)
 
         statistics = compute_ranking_statistics(results)
         logger.info(

@@ -4,6 +4,65 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.4] — 2026-07-16 — User Feedback and Preference Learning Engine
+
+A modular system that learns user preferences from explicit, traceable evidence —
+deterministic, no machine learning, no opaque prediction, no silent ranking-rule
+changes.
+
+### Added
+- `src/feedback/` — `FeedbackEngine` (record/build/explain/undo/reset/export/
+  compare), `FeedbackService` (thin storage orchestration), `FeedbackRegistry`
+  (self-registering plugin system), `PreferenceRule` + 4 shared aggregation bases
+  (`ImportancePreferenceRule`/`ThresholdPreferenceRule`/`CategoricalPreferenceRule`/
+  `BooleanPreferenceRule`), `DecayConfig`/`compute_confidence()` (centralized,
+  configurable decay and confidence math).
+- 23 built-in preference rules: 12 real, `Apartment`/`GeoEnrichment`-field-backed
+  (price sensitivity, maximum budget, walking distance, public transport,
+  availability importance, property type, minimum area, number of rooms,
+  platform, neighborhood, lifestyle, nearby services) and 11 honestly dormant-
+  field dimensions learned only from explicit filter choices (room type, private
+  bathroom, private kitchen, air conditioning, furnished, pets, balcony, parking,
+  utilities included, internet included, number of flatmates).
+- `src/feedback/ranking_adapter.py` — the sole module coupling `feedback` to
+  `ranking_v2`; three modes (`EXPLICIT_ONLY`/`SUGGESTED`/`ASSISTED`).
+- `src/feedback/filter_integration.py` — records repeated filter choices as
+  feedback without ever promoting a preference into a required filter.
+- Migration `0007_feedback_and_preferences.sql` — `feedback_events` (append-
+  only), `preference_observations`, `preference_adjustments`, `preference_snapshots`.
+  `0001`–`0006` untouched.
+- `src/ui/feedback_cli.py` — a new, separate CLI entry point:
+  record/profile/explain/history/undo/reset/export.
+- `docs/28_User_Feedback_and_Preference_Learning.md`.
+- 130 new tests (864 total).
+
+### Changed
+- `RentalResearchAgent.__init__` gained three new, optional, default-`None`/
+  `SUGGESTED` parameters (`feedback_engine`/`feedback_profile_id`/`feedback_mode`).
+  Every existing caller is unaffected.
+- `ui/cli.py` gained `--feedback-profile-id`/`--feedback-mode`.
+- `services/report_generator.py` gained one new, optional, default-`None`
+  `preference_profile` parameter, rendering explicit vs. inferred preferences
+  with confidence.
+
+### Explicitly not duplicated
+- Every rule reuses an existing engine's own function (`knowledge_service.
+  average_city_price()`, `GeoEnrichment`, real `Apartment` fields) — no formula
+  was reimplemented. Dormant-field rules reuse `filter_engine`'s own key strings
+  for the same concepts.
+
+### Key design decision
+- The preference-adjustment log, not a recomputed-every-time aggregate, is the
+  source of truth for "current" values — this is what makes `undo`/`reset`
+  genuinely effective: both write a new adjustment whose timestamp becomes a new
+  evidence cutoff, so a manual undo/reset sticks until genuinely new events
+  arrive, without ever deleting a raw feedback event.
+
+### Privacy
+- Sensitive personal characteristics (gender, ethnicity, religion, health
+  status, sexual orientation, political views) are never inferred — enforced by
+  a structural test, not just documentation.
+
 ## [2.5.3] — 2026-07-16 — Intelligent Ranking Engine V2
 
 A modular, explainable, evidence-based decision engine — deterministic, no machine

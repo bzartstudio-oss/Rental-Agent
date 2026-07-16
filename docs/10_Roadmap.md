@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests), **Step 9 — Dynamic Filter Engine** (done, 562 tests), which also fulfills the Version 2.0 Step 8 slot's original intent, **Step 10 — Geographic Intelligence Engine** (done, 640 tests), and **Step 11 — Intelligent Ranking Engine V2** (done, 734 tests total) — see all four sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests), **Step 9 — Dynamic Filter Engine** (done, 562 tests), which also fulfills the Version 2.0 Step 8 slot's original intent, **Step 10 — Geographic Intelligence Engine** (done, 640 tests), **Step 11 — Intelligent Ranking Engine V2** (done, 734 tests), and **Step 12 — User Feedback and Preference Learning Engine** (done, 864 tests total) — see all five sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -583,6 +583,48 @@ passed to the report generator as an independent artifact — never wired into v
 implementation reconciliation already made for Steps 6, 9, and 10. 94 new tests
 (734 total: 640 existing untouched + 94 new). Full write-up:
 [27_Intelligent_Ranking_Engine.md](27_Intelligent_Ranking_Engine.md).
+
+## Version 2.5 Step 12 — User Feedback and Preference Learning Engine (done 2026-07-16)
+
+A modular system that learns user preferences from explicit, traceable evidence —
+deterministic, no machine learning, no opaque prediction. `FeedbackEngine`/
+`FeedbackService`/`FeedbackRegistry`/`PreferenceRule` — a fully modular, self-
+registering plugin system mirroring `ConnectorRegistry`/`AnalysisRegistry`/
+`ProviderRegistry`/`FilterRegistry`/`GeoProviderRegistry`/`RankingRuleRegistry`'s
+established shape, its 7th application. 23 built-in preference rules across 4
+shared, parameterized aggregation bases (`ImportancePreferenceRule`/
+`ThresholdPreferenceRule`/`CategoricalPreferenceRule`/`BooleanPreferenceRule`) —
+12 real, apartment/geo-field-backed dimensions and 11 honestly dormant-field
+dimensions (private bathroom, furnished, pets, ... — the same "no structured
+schema field exists" situation `filter_engine`'s 27 dormant filters already
+documented for the identical fields), each learning only from explicit filter
+choices for the latter group.
+
+New migration `0007_feedback_and_preferences.sql` — `feedback_events` (genuinely
+append-only, no `update_*`/`delete_*` function anywhere), `preference_observations`,
+`preference_adjustments` (the source of truth for "current" preference values —
+undo/reset write new rows that move the evidence cutoff forward, never deleting a
+raw event), `preference_snapshots`. Centralized decay/confidence math
+(`src/feedback/decay.py`) implements every "Learning Rules" requirement the
+mission names: a single action can't strongly alter the profile, conflicting
+behavior reduces confidence, explicit observations count `3×` more than inferred
+ones, and the decay half-life is a configurable `DecayConfig`, not a hidden
+constant.
+
+`src/feedback/ranking_adapter.py` is the *only* module coupling `feedback` to
+`ranking_v2` — three modes (`EXPLICIT_ONLY`/`SUGGESTED`/`ASSISTED`), the first two
+leaving the caller's `RankingProfile` completely untouched, only `ASSISTED`
+substituting a learned profile seeded from the user's own explicit weights.
+`RentalResearchAgent` gained three new, optional, default-`None`/`SUGGESTED`
+parameters (`feedback_engine`/`feedback_profile_id`/`feedback_mode`), byte-
+identical behavior for every existing caller; a new, separate
+`src/ui/feedback_cli.py` entry point (kept apart from `ui/cli.py`'s own search
+command to preserve its backward compatibility) exposes
+record/profile/explain/history/undo/reset/export subcommands. 130 new tests (864
+total: 734 existing untouched + 130 new), including a structural privacy
+guardrail test asserting every registered preference dimension's key/description/
+category contains no sensitive-trait terminology. Full write-up:
+[28_User_Feedback_and_Preference_Learning.md](28_User_Feedback_and_Preference_Learning.md).
 
 ## Beyond Version 2.0 (explicitly deferred)
 

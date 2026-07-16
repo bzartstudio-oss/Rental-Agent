@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.analysis.models import AnalysisResult, AnalyzerResult, CompositeScore
+from src.feedback.models import FeedbackMode, PreferenceConfidence, PreferenceProfile, PreferenceValue
 from src.geography.models import GeoEnrichment, GeoResult, NearbyPlace, TravelMode
 from src.ranking_v2.models import RankedApartmentV2, RankingConfidence, RankingExplanation
 from src.services.report_generator import generate_report
@@ -330,6 +331,45 @@ class RankingV2SectionTests(ReportGeneratorTestCase):
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("A Nice Place", content)
         self.assertNotIn('class="ranking-v2"', content)
+
+
+class PreferenceProfileSectionTests(ReportGeneratorTestCase):
+    """v2.5 Step 12 — "which preferences were explicit, which preferences were
+    inferred, confidence of learned preferences" (the mission's own words).
+    """
+
+    def _profile(self) -> PreferenceProfile:
+        explicit = PreferenceValue(
+            preference_key="property_type", current_value={"preferred": "house"},
+            confidence=PreferenceConfidence(overall=1.0, supporting_evidence_count=0, opposing_evidence_count=0,
+                                             explicit_count=1, inferred_count=0),
+            source_types={"explicit"}, last_updated=datetime.now(timezone.utc), explanation="x", is_explicit=True,
+        )
+        inferred = PreferenceValue(
+            preference_key="walking_distance", current_value={"importance": 0.8},
+            confidence=PreferenceConfidence(overall=0.55, supporting_evidence_count=3, opposing_evidence_count=0,
+                                             explicit_count=0, inferred_count=3),
+            source_types={"inferred"}, last_updated=datetime.now(timezone.utc), explanation="x", is_explicit=False,
+        )
+        return PreferenceProfile(
+            profile_id="u1", mode=FeedbackMode.SUGGESTED,
+            preferences={"property_type": explicit, "walking_distance": inferred},
+        )
+
+    def test_preferences_section_shows_explicit_and_inferred_separately(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir, preference_profile=self._profile())
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn('class="preferences"', content)
+        self.assertIn("property_type", content)
+        self.assertIn("walking_distance", content)
+        self.assertIn("0.55", content)
+
+    def test_preferences_section_omitted_when_not_passed(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir)
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertNotIn('class="preferences"', content)
 
 
 if __name__ == "__main__":

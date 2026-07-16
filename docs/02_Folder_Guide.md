@@ -199,6 +199,7 @@ src/
   ui/
     __init__.py
     cli.py                                          # entry point — the only place a human interacts with the system
+    feedback_cli.py                                    # [live, v2.5 Step 12] record/profile/explain/history/undo/reset/export
   utils/
     __init__.py
     logging.py                                        # [v2.0 Step 7, live] get_logger()/StructuredFormatter —
@@ -296,6 +297,29 @@ src/
       reliability_rules.py                                                     # platform_reliability, connector_reliability
       context_rules.py                                                          # filter_preferences, analysis_composite,
                                                                                  # provider_health, search_history
+  feedback/                                             # [live, new package] the User Feedback and Preference
+                                                          # Learning Engine — see 28_User_Feedback_and_Preference_Learning.md
+    __init__.py                                            # imports rules/ -> self-registration
+    base_rule.py                                              # PreferenceRule (ABC) + 4 shared aggregate() bases, PreferenceContext
+    metadata.py                                                # PreferenceRuleMetadata
+    models.py                                                   # FeedbackEvent, FeedbackMode, PreferenceObservation/Evidence/
+                                                                 # Adjustment/Confidence/Value/Profile/Summary, FeedbackStatistics
+    event_types.py                                               # FeedbackEventType constants (open-ended, not an enum)
+    decay.py                                                      # DecayConfig, compute_confidence(), decayed_weight()
+    registry.py                                                    # FeedbackRegistry, register_preference_rule()
+    engine.py                                                       # FeedbackEngine — record/build/explain/undo/reset/export/compare
+    service.py                                                       # FeedbackService — thin storage orchestration
+    ranking_adapter.py                                                # suggest/resolve RankingProfile from a PreferenceProfile
+    filter_integration.py                                              # records repeated filter choices as feedback
+    exceptions.py                                                       # FeedbackException hierarchy
+    rules/
+      __init__.py                                                        # eager imports -> self-registration
+      price_rules.py                                                       # price_sensitivity, maximum_budget
+      listing_rules.py                                                      # availability_importance, property_type, minimum_area,
+                                                                             # number_of_rooms, platform
+      geo_rules.py                                                           # walking_distance, public_transport, lifestyle,
+                                                                              # nearby_services, neighborhood
+      amenity_rules.py                                                       # 11 dormant-field dimensions (filter-choice-only evidence)
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

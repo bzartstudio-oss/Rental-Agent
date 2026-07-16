@@ -336,3 +336,81 @@ class GeoEnrichmentHistoryEntry:
     recorded_at: datetime
     search_id: str | None = None
     id: int | None = None
+
+
+@dataclass
+class FeedbackEventRecord:
+    """Mirrors one row of `feedback_events` (migration 0007, v2.5 Step 12) — one row
+    per recorded user action, append-only: this table is never updated or deleted
+    from, only ever inserted into (see `src/feedback/`'s own docstrings for why).
+    """
+
+    event_id: str
+    profile_id: str
+    event_type: str
+    event_value: dict
+    occurred_at: datetime
+    source: str
+    metadata: dict
+    search_id: str | None = None
+    apartment_id: str | None = None
+    session_id: str | None = None
+    ranking_profile: dict | None = None
+    search_filters: dict | None = None
+    id: int | None = None
+
+
+@dataclass
+class PreferenceObservationRecord:
+    """Mirrors one row of `preference_observations` (migration 0007) — one
+    `PreferenceRule`'s verdict on one feedback event, persisted once at
+    `record_event()` time so a preference profile rebuilt later is reproducing
+    already-computed observations, not silently re-deriving different ones.
+    """
+
+    profile_id: str
+    preference_key: str
+    event_id: str
+    direction: str
+    magnitude: float
+    source_type: str
+    computed_at: datetime
+    explanation: str
+    observed_value: dict | None = None
+    id: int | None = None
+
+
+@dataclass
+class PreferenceAdjustmentRecord:
+    """Mirrors one row of `preference_adjustments` (migration 0007) — one row per
+    time a preference's computed value/confidence actually changed. Append-only:
+    `undo_preference_adjustment()` records a new row reversing a prior one
+    (`reverses_adjustment_id`), never deletes or updates the original.
+    """
+
+    profile_id: str
+    preference_key: str
+    reason: str
+    triggered_by_event_ids: list[str]
+    adjustment_type: str
+    applied_at: datetime
+    previous_value: dict | None = None
+    new_value: dict | None = None
+    previous_confidence: float | None = None
+    new_confidence: float | None = None
+    reverses_adjustment_id: int | None = None
+    id: int | None = None
+
+
+@dataclass
+class PreferenceSnapshotRecord:
+    """Mirrors one row of `preference_snapshots` (migration 0007) — one versioned,
+    fully-serialized `PreferenceProfile` at a point in time, for
+    `compare_preference_profiles()`/history browsing.
+    """
+
+    profile_id: str
+    snapshot: dict
+    reason: str
+    created_at: datetime
+    id: int | None = None

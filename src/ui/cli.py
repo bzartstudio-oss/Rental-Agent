@@ -14,6 +14,7 @@ from src.core.agent import RentalResearchAgent
 from src.core.config import OUTPUT_DIR
 from src.discovery.discovery_agent import DiscoveryAgent
 from src.discovery.known_platforms import ALL_KNOWN_PLATFORMS
+from src.feedback import FeedbackEngine, FeedbackMode
 from src.filter_engine import FilterEngine
 from src.geography import GeographicEngine
 from src.providers import ProviderKind, ProviderRouter
@@ -81,6 +82,28 @@ def build_parser() -> argparse.ArgumentParser:
             "weights every registered rule equally. Ignored without --use-ranking-v2."
         ),
     )
+    parser.add_argument(
+        "--feedback-profile-id",
+        default=None,
+        help=(
+            "Enable the User Feedback and Preference Learning Engine for this run under "
+            "the given profile id — records active filters as feedback and (with "
+            "--use-ranking-v2) resolves the ranking profile through the learned "
+            "preferences per --feedback-mode. See "
+            "docs/28_User_Feedback_and_Preference_Learning.md. Off by default."
+        ),
+    )
+    parser.add_argument(
+        "--feedback-mode",
+        choices=[m.value for m in FeedbackMode],
+        default=FeedbackMode.SUGGESTED.value,
+        help=(
+            "explicit_only: ignore learned preferences entirely. suggested (default): "
+            "compute them but never apply automatically. assisted: apply learned "
+            "adjustments to ranking weights, recording every one. Ignored without "
+            "--feedback-profile-id."
+        ),
+    )
     return parser
 
 
@@ -114,6 +137,7 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
     if args.use_ranking_v2:
         profile = COMPREHENSIVE_PROFILE if args.ranking_profile == "comprehensive" else DEFAULT_PROFILE
         ranking_engine_v2 = RankingEngineV2(profile=profile)
+    feedback_engine = FeedbackEngine() if args.feedback_profile_id else None
 
     agent = RentalResearchAgent(
         db,
@@ -123,6 +147,9 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
         filter_engine=filter_engine,
         geo_engine=geo_engine,
         ranking_engine_v2=ranking_engine_v2,
+        feedback_engine=feedback_engine,
+        feedback_profile_id=args.feedback_profile_id,
+        feedback_mode=FeedbackMode(args.feedback_mode),
     )
     result = agent.run(request)
 

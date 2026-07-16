@@ -276,6 +276,81 @@ Append-only like everything else here: a metric that changes (e.g. a new bus lin
 `transit_score`) gets a new row, not an overwrite — "the user must later be able to
 compare apartment evolution" applies to computed metrics too, not just scraped fields.
 
+### `feedback_events` — new (v2.5 Step 12, live)
+
+The User Feedback and Preference Learning Engine's append-only raw log (see
+[28_User_Feedback_and_Preference_Learning.md](28_User_Feedback_and_Preference_Learning.md)).
+No `update_*`/`delete_*` function exists anywhere for this table — the only way to
+"change" recorded history is to add a new row.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `event_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID, generated when the `FeedbackEvent` is constructed |
+| `profile_id` | TEXT, `NOT NULL` | Which user/profile this event belongs to |
+| `search_id` | TEXT FK → `search_requests.id`, nullable | Which search execution this event happened during, if any |
+| `apartment_id` | TEXT, nullable | Which listing this event concerns, if any (no FK — see this doc's own reasoning for `raw_captures.apartment_id`: historical feedback must still be understandable even if the apartment later changes) |
+| `event_type` | TEXT | One of `FeedbackEventType`'s named constants, or any future string — never validated against a closed set |
+| `event_value_json` | TEXT (JSON) | A rating, a filter key/value, a weight delta — shape varies by `event_type` |
+| `occurred_at` | TEXT (ISO 8601) | — |
+| `source` | TEXT | e.g. `"cli"`, `"search_request"` |
+| `session_id` | TEXT, nullable | — |
+| `metadata_json` | TEXT (JSON) | Free-form, caller-supplied context |
+| `ranking_profile_json` | TEXT (JSON), nullable | A snapshot of the active `RankingProfile` weights at the time |
+| `search_filters_json` | TEXT (JSON), nullable | A snapshot of the active search criteria at the time |
+
+### `preference_observations` — new (v2.5 Step 12, live)
+
+One `PreferenceRule`'s verdict on one `feedback_events` row, persisted once at
+`record_event()` time — a preference profile rebuilt later reproduces already-
+computed observations, never silently re-derives different ones.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `profile_id` | TEXT | — |
+| `preference_key` | TEXT | e.g. `"walking_distance"`, `"private_bathroom"` |
+| `event_id` | TEXT FK → `feedback_events.event_id` | — |
+| `direction` | TEXT | `"supporting"` or `"opposing"` |
+| `magnitude` | REAL | This observation's own strength, `[0, 1]`, before decay/confidence weighting |
+| `observed_value_json` | TEXT (JSON), nullable | The raw value this observation carried (a price, a category, a numeric threshold) |
+| `source_type` | TEXT | `"explicit"` or `"inferred"` |
+| `computed_at` | TEXT (ISO 8601) | — |
+| `explanation` | TEXT | Human-readable — becomes part of `explain_preference()`'s output |
+
+### `preference_adjustments` — new (v2.5 Step 12, live)
+
+One row per time a preference's *computed* value/confidence actually changed —
+the source of truth for "current" values (see docs/28 "Auditability"). Append-only:
+`undo_preference_adjustment()`/`reset_inferred_preferences()` write new rows
+reversing/resetting a prior one, never delete or update the original.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `profile_id` | TEXT | — |
+| `preference_key` | TEXT | — |
+| `previous_value_json` / `new_value_json` | TEXT (JSON), nullable | `NULL` `new_value_json` means "reset to neutral" |
+| `previous_confidence` / `new_confidence` | REAL, nullable | — |
+| `reason` | TEXT | e.g. `"Recomputed from 4 observation(s)"`, `"Reset inferred preference to neutral"` |
+| `triggered_by_event_ids_json` | TEXT (JSON) | Which `feedback_events` caused this adjustment |
+| `adjustment_type` | TEXT | `"inferred"` \| `"explicit"` \| `"undo"` \| `"reset"` |
+| `reverses_adjustment_id` | INTEGER FK → `preference_adjustments.id`, nullable | Set only on an `"undo"` row |
+| `applied_at` | TEXT (ISO 8601) | Also the new evidence cutoff for future rebuilds when `adjustment_type` is `"reset"`/`"undo"` |
+
+### `preference_snapshots` — new (v2.5 Step 12, live)
+
+A versioned, full-profile serialization at a point in time — for
+`compare_preference_profiles()`/history browsing.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `profile_id` | TEXT | — |
+| `snapshot_json` | TEXT (JSON) | Every preference's `current_value`/`confidence`/`is_explicit` at `created_at` |
+| `reason` | TEXT | e.g. `"build_preference_profile"` |
+| `created_at` | TEXT (ISO 8601) | — |
+
 ### `knowledge_entries` (v1.1, live — unchanged)
 
 Curated reference data. `id`, `category`, `key`, `value_json`, `source`, `updated_at`.

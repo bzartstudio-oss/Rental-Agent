@@ -41,6 +41,7 @@ from pathlib import Path
 from src.analysis.models import AnalysisResult
 from src.core.config import OUTPUT_DIR
 from src.discovery import platform_registry
+from src.feedback.models import PreferenceProfile
 from src.geography.models import GeoEnrichment, TravelMode
 from src.ranking_v2.models import RankedApartmentV2
 from src.storage import apartment_repository, search_repository
@@ -63,6 +64,7 @@ def generate_report(
     ai_summary: str | None = None,
     geo_enrichments: dict[str, GeoEnrichment] | None = None,
     ranking_v2_results: list[RankedApartmentV2] | None = None,
+    preference_profile: PreferenceProfile | None = None,
 ) -> Path:
     analysis_results = analysis_results or {}
     geo_enrichments = geo_enrichments or {}
@@ -91,11 +93,11 @@ def generate_report(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / f"{search_id}.html"
-    report_path.write_text(_render_page(search, rows_html, ai_summary), encoding="utf-8")
+    report_path.write_text(_render_page(search, rows_html, ai_summary, preference_profile), encoding="utf-8")
     return report_path
 
 
-def _render_page(search, rows_html: list[str], ai_summary: str | None = None) -> str:
+def _render_page(search, rows_html: list[str], ai_summary: str | None = None, preference_profile: PreferenceProfile | None = None) -> str:
     criteria = json.loads(search.criteria_json) if search else {}
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -123,6 +125,10 @@ def _render_page(search, rows_html: list[str], ai_summary: str | None = None) ->
   .ranking-v2-positive {{ color: #1a7a3c; }}
   .ranking-v2-negative {{ color: #a13c3c; }}
   .ai-summary {{ background: #f2f6fb; border: 1px solid #cddcec; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.95rem; }}
+  .preferences {{ background: #f7f4ee; border: 1px solid #e0d8c8; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; }}
+  .preferences ul {{ margin: 0.4rem 0 0; padding-left: 1.2rem; }}
+  .pref-explicit {{ color: #1a5c8a; }}
+  .pref-inferred {{ color: #6b6b6b; }}
   a {{ color: #0055aa; }}
 </style>
 </head>
@@ -135,6 +141,7 @@ def _render_page(search, rows_html: list[str], ai_summary: str | None = None) ->
   Generated: {escape(datetime.now(timezone.utc).isoformat())}
 </div>
 {_render_ai_summary(ai_summary)}
+{_render_preference_profile(preference_profile)}
 {''.join(rows_html) if rows_html else '<p>No matching listings.</p>'}
 </body>
 </html>
@@ -295,4 +302,35 @@ def _render_ranking_v2(ranking_v2: RankedApartmentV2 | None) -> str:
     <ul class="geo-detail ranking-v2-positive">{positive_html or '<li>No standout positive factors</li>'}</ul>
     <ul class="geo-detail ranking-v2-negative">{negative_html or '<li>No standout negative factors</li>'}</ul>
     {warnings_html}
+  </div>"""
+
+
+def _render_preference_profile(preference_profile: "PreferenceProfile | None") -> str:
+    """"Add optional report sections showing: why the result matches the user's
+    preferences, which preferences were explicit, which preferences were
+    inferred, confidence of learned preferences, how ranking would change
+    without inferred preferences" (v2.5 Step 12 mission). Omitted entirely when
+    no profile was supplied — the same honesty convention every prior optional
+    section already follows. Inferred preferences are labeled as such precisely
+    so a reader can see which ones would disappear under `EXPLICIT_ONLY` mode —
+    without this report needing to re-run ranking a second time to prove it.
+    """
+    if preference_profile is None:
+        return ""
+
+    explicit_rows = []
+    inferred_rows = []
+    for key, value in sorted(preference_profile.preferences.items()):
+        if value.current_value is None:
+            continue
+        confidence_text = f"{value.confidence.overall:.2f}"
+        row = f"<li><strong>{escape(key)}</strong>: {escape(str(value.current_value))} (confidence: {confidence_text})</li>"
+        (explicit_rows if value.is_explicit else inferred_rows).append(row)
+
+    return f"""<div class="preferences">
+    <div class="facts">Preference Profile ({escape(preference_profile.profile_id)}, mode: {escape(preference_profile.mode.value)})</div>
+    <div class="facts pref-explicit">Explicit preferences (always authoritative):</div>
+    <ul>{''.join(explicit_rows) or '<li>None set</li>'}</ul>
+    <div class="facts pref-inferred">Inferred preferences (would not apply under EXPLICIT_ONLY mode):</div>
+    <ul>{''.join(inferred_rows) or '<li>None learned yet</li>'}</ul>
   </div>"""

@@ -351,6 +351,124 @@ A versioned, full-profile serialization at a point in time — for
 | `reason` | TEXT | e.g. `"build_preference_profile"` |
 | `created_at` | TEXT (ISO 8601) | — |
 
+### `discovery_runs` — new (v2.5 Step 13, live)
+
+One row per `AutomaticDiscoveryAgent.run()` execution (see
+[29_Automatic_Platform_Discovery.md](29_Automatic_Platform_Discovery.md)). The one table
+here with a real, documented mutation after insert: `update_run_summary()` fills in
+`completed_at`/the six summary counters once the pipeline finishes — every other table
+below is strictly append-only.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `run_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `request_json` | TEXT (JSON) | The full `DiscoveryRequest`, so a run's exact parameters are always reproducible |
+| `started_at` / `completed_at` | TEXT (ISO 8601), `completed_at` nullable | — |
+| `providers_used_json` | TEXT (JSON) | Which `DiscoveryProvider`s actually ran (a skipped-refresh run has `[]`) |
+| `total_candidates` / `new_candidate_count` / `duplicate_count` / `verified_count` / `supported_count` / `unsupported_count` | INTEGER | Summary counters, written once by `update_run_summary()` |
+| `notes` | TEXT, nullable | Warnings joined into one string (e.g. a failed provider, a skipped refresh) |
+
+### `platform_candidates` — new (v2.5 Step 13, live)
+
+One *current-state* row per unique discovered candidate — mutable, like `platforms`
+itself, since classification/status/confidence genuinely change as more evidence
+arrives. **Never the canonical registry**: promotion to a real `platforms` row only
+ever happens through the existing `DiscoveryAgent.sync_platforms()` path (see docs/29
+"Registry Integration"), never automatically.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `candidate_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID, stable across every run that re-discovers this same normalized domain |
+| `normalized_domain` | TEXT | The dedup key — see docs/29 "Deduplication" |
+| `name` | TEXT | — |
+| `raw_url` | TEXT | The literal URL a provider handed back |
+| `country` / `region` / `city` | TEXT, nullable | From the `DiscoveryRequest` that first found this candidate |
+| `status` | TEXT | One of `PlatformStatus`'s 12 values |
+| `classification` | TEXT | One of `PlatformClassification`'s 13 values |
+| `confidence` | REAL, nullable | `[0, 1]`, deterministic — see docs/29 "Confidence Calculation" |
+| `matched_platform_id` | TEXT FK → `platforms.id`, nullable | Set when this candidate matches an existing registry platform by normalized domain |
+| `first_discovered_at` / `last_seen_at` | TEXT (ISO 8601) | `first_discovered_at` never changes after insert |
+| `last_run_id` | TEXT FK → `discovery_runs.run_id` | Which run most recently touched this candidate |
+
+### `platform_evidence` — new (v2.5 Step 13, live)
+
+Append-only: "Never overwrite evidence" (the mission's own words) — no `update_*`/
+`delete_*` function exists anywhere for this table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `candidate_id` | TEXT FK → `platform_candidates.candidate_id` | — |
+| `run_id` | TEXT FK → `discovery_runs.run_id` | — |
+| `evidence_type` | TEXT | One of the mission's 15 named evidence types (e.g. `"discovered_url"`, `"page_title"`, `"location_evidence"`) |
+| `discovery_provider` | TEXT | Which provider produced this row |
+| `value_json` | TEXT (JSON) | Shape varies by `evidence_type` |
+| `confidence` | REAL, nullable | — |
+| `collected_at` | TEXT (ISO 8601) | — |
+
+### `platform_verification_observations` — new (v2.5 Step 13, live)
+
+Append-only. "Verification failures must not erase a platform" (the mission's own
+words): a failed check is recorded honestly here, never removes the candidate row.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `candidate_id` | TEXT FK → `platform_candidates.candidate_id` | — |
+| `run_id` | TEXT FK → `discovery_runs.run_id` | — |
+| `check_type` | TEXT | e.g. `"domain_accessibility"`, `"listing_or_search_page_presence"`, `"login_requirement"` |
+| `result` | TEXT | `"pass"` / `"fail"` / `"unknown"` for most checks; `login_requirement` uses the more explicit `"login_required"` / `"no_login_required"` instead of ambiguous pass/fail |
+| `detail_json` | TEXT (JSON), nullable | e.g. matched keyword markers, HTTP status code |
+| `observed_at` | TEXT (ISO 8601) | — |
+
+### `platform_capability_estimates` — new (v2.5 Step 13, live)
+
+Append-only. `is_estimate` is always `1` (`True`) — nothing in this sprint confirms a
+capability via a real connector.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `candidate_id` | TEXT FK → `platform_candidates.candidate_id` | — |
+| `run_id` | TEXT FK → `discovery_runs.run_id` | — |
+| `capability_key` | TEXT | One of the mission's 14 named capabilities (e.g. `"images"`, `"api_or_feed"`, `"likely_connector_complexity"`) |
+| `estimated_value_json` | TEXT (JSON) | Shape varies by `capability_key` |
+| `is_estimate` | INTEGER (bool) | Always `1` |
+| `observed_at` | TEXT (ISO 8601) | — |
+
+### `platform_duplicate_links` — new (v2.5 Step 13, live)
+
+Append-only. "Store duplicate relationships rather than deleting duplicate evidence"
+(the mission's own words) — a candidate identified as a duplicate keeps its own row
+and evidence; only this link records the relationship.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `candidate_id` | TEXT FK → `platform_candidates.candidate_id` | The duplicate |
+| `duplicate_of_candidate_id` | TEXT FK → `platform_candidates.candidate_id` | The canonical candidate it duplicates |
+| `matched_by` | TEXT | e.g. `"normalized_name"` |
+| `linked_at` | TEXT (ISO 8601) | — |
+
+### `discovery_provider_observations` — new (v2.5 Step 13, live)
+
+Append-only, one row per provider execution within a run — this sprint's whole
+"Knowledge Engine Integration" answer (see docs/29): `statistics.compute_discovery_
+statistics()` aggregates this table for provider effectiveness/runtime/failure rates.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `run_id` | TEXT FK → `discovery_runs.run_id` | — |
+| `provider_id` | TEXT | — |
+| `candidates_found` | INTEGER | 0 on failure |
+| `duration_ms` | INTEGER, nullable | — |
+| `succeeded` | INTEGER (bool) | — |
+| `error` | TEXT, nullable | Set only when `succeeded` is false |
+| `observed_at` | TEXT (ISO 8601) | — |
+
 ### `knowledge_entries` (v1.1, live — unchanged)
 
 Curated reference data. `id`, `category`, `key`, `value_json`, `source`, `updated_at`.
@@ -377,6 +495,14 @@ platforms 1──* apartments 1──* apartment_price_history
 
 filter_definitions — standalone metadata, not FK-linked   (NEW)
 knowledge_entries  — standalone, not FK-linked
+
+discovery_runs 1──* platform_candidates *──1 platforms (matched_platform_id, nullable)  (NEW)
+   │                        │ 1──* platform_evidence
+   │                        │ 1──* platform_verification_observations
+   │                        │ 1──* platform_capability_estimates
+   │                        │ 1──* platform_duplicate_links (self-referential: candidate_id / duplicate_of_candidate_id)
+   │
+   1──* discovery_provider_observations   (NEW, v2.5 Step 13)
 ```
 
 ## Storage Format Outside SQLite

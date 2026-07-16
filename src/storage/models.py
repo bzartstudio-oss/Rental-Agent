@@ -414,3 +414,130 @@ class PreferenceSnapshotRecord:
     reason: str
     created_at: datetime
     id: int | None = None
+
+
+@dataclass
+class DiscoveryRunRecord:
+    """Mirrors one row of `discovery_runs` (migration 0008, v2.5 Step 13) — one row
+    per `AutomaticDiscoveryAgent.run()` call.
+    """
+
+    run_id: str
+    request: dict
+    started_at: datetime
+    providers_used: list[str]
+    completed_at: datetime | None = None
+    total_candidates: int = 0
+    new_candidate_count: int = 0
+    duplicate_count: int = 0
+    verified_count: int = 0
+    supported_count: int = 0
+    unsupported_count: int = 0
+    notes: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class PlatformCandidateRecord:
+    """Mirrors one row of `platform_candidates` (migration 0008) — one *current-
+    state* row per unique discovered candidate (mutable, like `platforms` itself;
+    classification/status/confidence genuinely change as more evidence arrives).
+    Never the canonical registry — see `src/discovery/automatic/`'s own docstrings.
+    """
+
+    candidate_id: str
+    normalized_domain: str
+    name: str
+    raw_url: str
+    status: str
+    classification: str
+    first_discovered_at: datetime
+    last_seen_at: datetime
+    last_run_id: str
+    country: str | None = None
+    region: str | None = None
+    city: str | None = None
+    confidence: float | None = None
+    matched_platform_id: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class PlatformEvidenceRecord:
+    """Mirrors one row of `platform_evidence` (migration 0008) — append-only, one
+    row per piece of evidence ever collected. Never overwritten.
+    """
+
+    candidate_id: str
+    run_id: str
+    evidence_type: str
+    discovery_provider: str
+    value: dict
+    collected_at: datetime
+    confidence: float | None = None
+    id: int | None = None
+
+
+@dataclass
+class PlatformVerificationObservationRecord:
+    """Mirrors one row of `platform_verification_observations` (migration 0008) —
+    append-only, one row per verification attempt. A failed check is recorded
+    honestly, never erases the candidate (see docs/29 "Verification").
+    """
+
+    candidate_id: str
+    run_id: str
+    check_type: str
+    result: str
+    observed_at: datetime
+    detail: dict | None = None
+    id: int | None = None
+
+
+@dataclass
+class PlatformCapabilityEstimateRecord:
+    """Mirrors one row of `platform_capability_estimates` (migration 0008) —
+    append-only. `is_estimate` is always `True` until a real connector confirms a
+    capability directly (not done by this sprint — see docs/29 "Capability
+    Estimation").
+    """
+
+    candidate_id: str
+    run_id: str
+    capability_key: str
+    estimated_value: dict
+    observed_at: datetime
+    is_estimate: bool = True
+    id: int | None = None
+
+
+@dataclass
+class PlatformDuplicateLinkRecord:
+    """Mirrors one row of `platform_duplicate_links` (migration 0008) — append-
+    only. Stores the relationship rather than deleting the duplicate candidate's
+    own evidence (the mission's own words: "Store duplicate relationships rather
+    than deleting duplicate evidence").
+    """
+
+    candidate_id: str
+    duplicate_of_candidate_id: str
+    matched_by: str
+    linked_at: datetime
+    id: int | None = None
+
+
+@dataclass
+class DiscoveryProviderObservationRecord:
+    """Mirrors one row of `discovery_provider_observations` (migration 0008) —
+    append-only, one row per provider execution within a run. Feeds the Knowledge
+    Engine integration (docs/29 "Knowledge Engine Integration").
+    """
+
+    run_id: str
+    provider_id: str
+    succeeded: bool
+    observed_at: datetime
+    candidates_found: int = 0
+    duration_ms: int | None = None
+    error: str | None = None
+    id: int | None = None

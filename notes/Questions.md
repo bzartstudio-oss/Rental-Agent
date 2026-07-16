@@ -4,6 +4,25 @@ Open questions that need an answer from the user (or from research) before a dec
 
 - Exact structured shape for `SearchRequest.location`. Blocks: [../docs/04_Search_Request.md](../docs/04_Search_Request.md)
 - Exact `status` vocabulary for availability tracking (`available`/`pending`/`delisted`/...). Blocks: [../docs/03_Data_Model.md](../docs/03_Data_Model.md)
+- Should a real web-search-API provider (e.g. a licensed search API, with a vendor
+  API key) be added as a third `DiscoveryProvider`, and if so which vendor? Only 2
+  providers ship in v2.5 Step 13 (`curated_seed`, `manual_url`), both needing zero
+  network credentials — a real search-engine-backed provider is a genuine future
+  extension, not built this sprint since it needs a vendor/cost/ToS decision this
+  mission didn't ask for. Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
+- Who curates `discovery/automatic/normalization.py`'s `DOMAIN_ALIASES` dict (empty
+  by default), and on what cadence? Real alias pairs (e.g. the same platform under a
+  country-specific TLD) are a manual curation decision explicitly deferred this
+  sprint. Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
+- What concretely does "an explicitly approved supported API/feed integration"
+  require organizationally before a `CONNECTOR_MISSING` candidate can be promoted
+  without a real connector (legal review? a recorded ToS check? who signs off?) —
+  `discovery-cli approve-candidate` currently lets any operator promote a candidate
+  into the registry with `connector_available=False`, which is honest but doesn't
+  yet enforce any approval workflow beyond "a human ran the command." Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
+- When should continuous monitoring (periodic re-discovery) and notifications
+  (alerting on newly-supported platforms/locations) be scheduled — both explicitly
+  out of scope for v2.5 Step 13 per the mission's own instructions? Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
 
 ## Answered
 

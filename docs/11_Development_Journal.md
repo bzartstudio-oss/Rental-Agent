@@ -241,3 +241,111 @@ Ranking integration deliberately isolated to one module: `src/feedback/ranking_a
 Integration follows the exact `data_router`/`ai_router`/`filter_engine`/`geo_engine`/`ranking_engine_v2` precedent for the fifth time: three new, optional, default-`None`/`SUGGESTED` parameters (`feedback_engine`/`feedback_profile_id`/`feedback_mode`) on `RentalResearchAgent`, zero behavior change for any existing caller. A new, separate CLI entry point (`src/ui/feedback_cli.py`) rather than folding feedback commands into `ui/cli.py` — recording feedback/inspecting preferences is a genuinely different operation from running a search, and keeping the argument surfaces apart preserves `ui/cli.py`'s own backward-compatibility guarantee without either command's help text growing to accommodate the other.
 
 130 new tests (864 total: 734 existing untouched + 130 new) — every new class's unit tests, all 23 rules' own `observe()` behavior (real evidence and honest no-evidence paths), migration + append-only-history tests (asserting no `update_*`/`delete_*` function exists), the mission's own explicit "Test that" list verified one by one (a single event never creates an extreme preference, repeated consistent events strengthen confidence, conflicting events reduce it, explicit settings override inferred evidence, missing listing fields never become negative signals, old feedback stays reproducible byte-for-byte, reset never deletes raw events), a plugin test, performance tests (500 events against all 23 real rules), a structural privacy guardrail test, agent-level integration tests (real Playwright-fixture pipeline, mocked at the `BrowserCollector` boundary), and CLI tests. Verified against a real, live run: built a neutral profile, ranked apartments, recorded explicit and inferred feedback, rebuilt the profile, re-ranked, and confirmed the ordering changed for an explainable reason while `EXPLICIT_ONLY` mode reproduced the original ordering exactly. New `docs/28_User_Feedback_and_Preference_Learning.md`. Full detail in `learning/architecture_notes.md`.
+
+## 2026-07-16 — Version 2.5 Step 13: Automatic Platform Discovery Agent
+
+Explicit instruction: this is about finding *candidate* rental platforms for a
+country/region/city — NOT about generating connector code, and NOT about bypassing
+authentication/CAPTCHAs/paywalls/robots restrictions/access controls. Discovery must
+stay evidence-based, auditable, configurable, and manually triggerable. Answered up
+front, before writing code: (1) the existing `discovery/discovery_agent.py`/
+`platform_registry.py` remain the single canonical, active registry — this new agent
+only ever *contributes candidates*, checked against that registry first, every run;
+(2) a discovered platform never automatically becomes research-active — only an
+existing certified connector (cross-checked honestly via `ConnectorRegistry`, never
+invented) or an explicit human approval (`discovery-cli approve-candidate`, which
+still routes through the existing `DiscoveryAgent.sync_platforms()` path) makes that
+happen; (3) classification is deterministic keyword scoring across the mission's 13
+named categories, never an ML model; (4) verification/capability-estimation touch the
+network through exactly one injectable `PageFetcher` seam, so every test in the suite
+supplies a fixture — "do not use uncontrolled scraping in tests," the mission's own
+words — and the one real implementation (`HttpPageFetcher`) never retries, never
+executes JavaScript, never attempts a login, never solves a CAPTCHA.
+
+New `src/discovery/automatic/` package, an 8th application of this codebase's
+established self-registration shape (`ConnectorRegistry`/`AnalysisRegistry`/
+`ProviderRegistry`/`FilterRegistry`/`GeoProviderRegistry`/`RankingRuleRegistry`/
+`FeedbackRegistry`): `DiscoveryProvider` (ABC, `metadata()`+`discover(request)`),
+`DiscoveryProviderRegistry`/`DiscoveryProviderFactory`. Two built-in providers ship
+this sprint, deliberately not three: `curated_seed` surfaces `known_platforms.py`'s
+existing public, hand-compiled facts (filtered by country), and `manual_url` surfaces
+a request's own `manual_urls` — both need zero database access at construction time,
+which self-registered, eagerly-instantiated providers with no per-call parameters
+can't be given. A `RegistryDiscoveryProvider` was deliberately *not* built as a
+plugin — checking the Existing Platform Registry is the mission's own distinct first
+workflow step, done directly by `AutomaticDiscoveryAgent.run()` via
+`discovery.platform_registry.list_all_platforms()`, not through the provider
+interface (which has no database connection parameter to give it one).
+
+`AutomaticDiscoveryAgent.run()` implements the mission's own 12-step workflow in
+order: check the registry, decide whether a refresh is even needed (a real,
+per-geography `DiscoveryPolicy(max_age_days, force_refresh)`, not a hidden constant —
+computed *before* this run's own row is written, so a run never compares itself
+against itself, a bug caught during live smoke-testing and fixed the same session),
+run the selected providers (one broken provider recorded as a failed
+`DiscoveryProviderObservation` and skipped, never aborting the whole run — the same
+per-connector failure isolation `RentalResearchAgent.run()` already gives
+connectors), normalize domains/names (reusing `discovery_agent.normalize_homepage()`
+directly rather than reimplementing it — renamed from a private helper to a public
+one specifically for this reuse), deduplicate (two tiers: same normalized domain
+collapses into one *existing* candidate row and is simply re-observed, never
+duplicated; a *different* domain with the same normalized name is a genuine second
+row, linked via a new `platform_duplicate_links` row rather than merged — "store
+duplicate relationships rather than deleting duplicate evidence," the mission's own
+words), collect the mission's 15 named evidence types, classify (deterministic
+keyword scoring, 13 categories), verify (domain accessibility + homepage content —
+`"unknown"`, never a fabricated pass, when nothing was fetched), estimate 14
+capabilities (always `is_estimate=True`), calculate a confidence score (the plain
+mean of three signals — domain reachability, content relevance, evidence richness —
+never an ML score), and store everything. Status assignment is one explicit,
+documented priority list (duplicate → inaccessible → requires-login → irrelevant →
+connector-available → connector-missing → requires-manual-review → verified →
+relevant) rather than an ad-hoc if/elif chain, so every one of the mission's 12
+`PlatformStatus` values has a clear, single reason to exist.
+
+New migration `0008_automatic_platform_discovery.sql` — 7 tables, `platforms`
+(migration 0001) completely untouched. `platform_candidates` is a *current-state* row
+like `platforms` itself; every table beneath it (`platform_evidence`,
+`platform_verification_observations`, `platform_capability_estimates`,
+`platform_duplicate_links`, `discovery_provider_observations`) is strictly
+append-only — no `update_*`/`delete_*` function exists for any of them anywhere in
+this codebase, verified by a structural test that asserts exactly that. This
+sprint's whole answer to "Knowledge Engine Integration": rather than building a
+second, parallel knowledge store, `discovery_provider_observations` (already
+append-only) plus `statistics.compute_discovery_statistics()`/`compare_discovery_runs()`
+mirror `knowledge_service.py`'s own "plain average/count/ratio over already-stored
+data, no prediction" discipline, applied to discovery runs instead of connector
+performance.
+
+New `src/ui/discovery_cli.py` (kept apart from `ui/cli.py`/`ui/feedback_cli.py` for
+the same backward-compatibility reason both prior CLIs were kept separate):
+`discover`/`list-discovered`/`list-verified`/`list-unsupported`/
+`list-missing-connectors`/`compare-runs`/`approve-candidate`/`reject-candidate`/
+`view-evidence`/`view-coverage-summary`. `approve-candidate` is the one place this
+sprint writes to the real `platforms` table — and it does so through the *existing*
+`DiscoveryAgent.sync_platforms()` path, never a new insert path, so "Platform
+Registry remains canonical" holds structurally, not just by convention. `reject-candidate` records an auditable `PlatformEvidence` row
+(`evidence_type="manual_review_decision"`) alongside the status change, so a
+rejection is explainable later, not a silent flag flip. HTML + JSON discovery
+reports (`src/discovery/automatic/report.py`) mirror `services/report_generator.py`'s
+own "plain string templating, reproducible from stored data alone" shape.
+
+78 new tests (942 total: 864 existing untouched + 78 new) — migration + repository
+round-trip tests (every foreign key seeded correctly after discovering the hard way
+that `platform_candidates`/`platform_evidence`/etc. all reference real
+`discovery_runs`/`platform_candidates` rows), a provider-registration test that
+registers a brand-new, ad-hoc provider at test time and resolves it purely through
+the registry/factory with zero agent code touched, normalization/classification/
+verification/capability-estimation unit tests, and a full `AutomaticDiscoveryAgent`
+pipeline suite (fake `PageFetcher` throughout, a dedicated test-only provider for
+exact, deterministic candidate sets) verifying the mission's own explicit "test that"
+checklist one by one: the existing registry is checked before external discovery,
+duplicates don't create separate active platforms, unsupported platforms remain
+stored after the run, a failed verification never deletes a candidate's evidence or
+row, a platform without a connector never becomes `CONNECTOR_AVAILABLE`, repeated
+runs accumulate real history (two `discovery_runs` rows, one persisted candidate),
+and one failing provider doesn't abort the rest of the run. Live smoke-tested end-
+to-end against a real (offline, no-network) SQLite database for Spain/Valencia
+before any test was written — caught the run-compares-itself-against-itself refresh
+bug this way, not via a test. New `docs/29_Automatic_Platform_Discovery.md`. Full
+detail in `learning/architecture_notes.md`.

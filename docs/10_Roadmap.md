@@ -626,6 +626,42 @@ guardrail test asserting every registered preference dimension's key/description
 category contains no sensitive-trait terminology. Full write-up:
 [28_User_Feedback_and_Preference_Learning.md](28_User_Feedback_and_Preference_Learning.md).
 
+## Version 2.5 Step 13 — Automatic Platform Discovery Agent (done 2026-07-16)
+
+A provider-independent system that discovers, evaluates, deduplicates, classifies,
+verifies, and stores rental-platform *candidates* for a requested country/region/
+city/language/rental-category — explicitly **not** connector generation, and
+explicitly **not** bypassing authentication/CAPTCHAs/robots restrictions/rate
+limits. `src/discovery/automatic/` — `AutomaticDiscoveryAgent`/`DiscoveryProviderRegistry`/
+`DiscoveryProvider`, an 8th application of this codebase's established self-
+registering plugin shape (`ConnectorRegistry`/`AnalysisRegistry`/`ProviderRegistry`/
+`FilterRegistry`/`GeoProviderRegistry`/`RankingRuleRegistry`/`FeedbackRegistry`).
+Two built-in providers ship this sprint (`curated_seed` — surfaces
+`discovery/known_platforms.py`'s existing public facts; `manual_url` — surfaces a
+request's own `manual_urls`); adding a third requires zero `AutomaticDiscoveryAgent`
+changes.
+
+The Existing Platform Registry (`discovery/platform_registry.py`) is checked *first*,
+every run, and remains the sole canonical, active registry — this agent only ever
+contributes *candidates*; promotion to a real `platforms` row happens exclusively
+through the existing `DiscoveryAgent.sync_platforms()` path, via a new
+`discovery-cli approve-candidate`/`reject-candidate` pair, never automatically. New
+migration `0008_automatic_platform_discovery.sql` — 7 tables (`discovery_runs`,
+`platform_candidates`, `platform_evidence`, `platform_verification_observations`,
+`platform_capability_estimates`, `platform_duplicate_links`,
+`discovery_provider_observations`); every table but `discovery_runs`/
+`platform_candidates` is strictly append-only, mirroring migration 0007's own
+append-only-except-current-state-row shape.
+
+Classification (13 categories) is deterministic keyword scoring, never opaque ML.
+Verification/capability estimation reuse a single injectable `PageFetcher` (real
+`HttpPageFetcher` in production, a fixture in every test — "do not use uncontrolled
+scraping in tests," the mission's own words) so no test ever makes a real network
+call. Connector availability is cross-checked honestly via the existing
+`ConnectorRegistry` — never invented. 78 new tests (942 total: 864 existing
+untouched + 78 new). Full write-up:
+[29_Automatic_Platform_Discovery.md](29_Automatic_Platform_Discovery.md).
+
 ## Beyond Version 2.0 (explicitly deferred)
 
 Renamed from "V2+" to avoid confusion with the new, formal "Version 2.0" above — this
@@ -633,7 +669,6 @@ section always meant "later than whatever's current," not literally "version 2."
 the items below are addressed by Version 2.0; they're still all genuinely future:
 
 - Cross-platform apartment de-duplication/merging (`apartments.merged_into_id` — see [07_Analysis_Engine.md](07_Analysis_Engine.md))
-- Automated platform discovery (see [05_Platform_Discovery.md](05_Platform_Discovery.md))
 - AI-assisted ranking explanations / report summaries (`src/ai/` reserved, see [02_Folder_Guide.md](02_Folder_Guide.md))
 - Additional rental types beyond residential apartments
 - A web UI (V1 is CLI-only)

@@ -4,6 +4,58 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.5] — 2026-07-16 — Automatic Platform Discovery Agent
+
+A provider-independent system that discovers, evaluates, deduplicates, classifies,
+verifies, and stores rental-platform *candidates* for a country/region/city — not
+connector generation, not authentication/CAPTCHA/robots bypass. Evidence-based,
+auditable, configurable, manually triggerable.
+
+### Added
+- `src/discovery/automatic/` — `AutomaticDiscoveryAgent` (the 12-step discovery
+  pipeline), `DiscoveryProviderRegistry`/`DiscoveryProviderFactory` (self-registering
+  plugin system), `DiscoveryProvider` (ABC), thin `service.py` storage orchestration,
+  `statistics.py` (`compute_discovery_statistics()`/`compare_discovery_runs()`),
+  `report.py` (HTML + JSON discovery reports).
+- Deterministic classification (`classification.py`, 13 categories, keyword-scoring,
+  never ML), verification (`verification.py`, injectable `PageFetcher` — a real
+  `HttpPageFetcher` in production, always a fixture in tests), capability estimation
+  (`capability.py`, 14 capabilities, always `is_estimate=True`), and two-tier
+  deduplication (`normalization.py` — normalized domain collapses to one row;
+  normalized name across a different domain links a genuine duplicate row).
+- Two built-in discovery providers: `curated_seed` (surfaces
+  `discovery/known_platforms.py`'s existing public facts by country) and
+  `manual_url` (surfaces a request's own `manual_urls`).
+- Migration `0008_automatic_platform_discovery.sql` — 7 tables (`discovery_runs`,
+  `platform_candidates`, `platform_evidence`, `platform_verification_observations`,
+  `platform_capability_estimates`, `platform_duplicate_links`,
+  `discovery_provider_observations`). `0001`–`0007` untouched. Every table but
+  `discovery_runs`/`platform_candidates` is strictly append-only.
+- `src/ui/discovery_cli.py` — a new, separate CLI entry point:
+  `discover`/`list-discovered`/`list-verified`/`list-unsupported`/
+  `list-missing-connectors`/`compare-runs`/`approve-candidate`/`reject-candidate`/
+  `view-evidence`/`view-coverage-summary`.
+- `docs/29_Automatic_Platform_Discovery.md`.
+- 78 new tests (942 total).
+
+### Explicitly not duplicated / not built this sprint
+- The Existing Platform Registry (`discovery/discovery_agent.py`/
+  `platform_registry.py`) remains completely unchanged and canonical — this agent
+  only ever contributes candidates; promotion happens exclusively through the
+  existing `DiscoveryAgent.sync_platforms()` path (now reachable via
+  `discovery-cli approve-candidate`).
+- Connector code generation, continuous monitoring, and notifications are
+  explicitly out of scope this sprint, per the mission's own instructions.
+- Connector-availability checks reuse the existing `ConnectorRegistry` directly —
+  never a second, parallel connector-tracking mechanism.
+
+### Key design decision
+- A discovered platform never automatically becomes research-active. Status
+  assignment is one explicit, documented priority list (duplicate → inaccessible →
+  requires-login → irrelevant → connector-available → connector-missing →
+  requires-manual-review → verified → relevant), and only a registered connector or
+  an explicit human approval can ever produce `CONNECTOR_AVAILABLE`.
+
 ## [2.5.4] — 2026-07-16 — User Feedback and Preference Learning Engine
 
 A modular system that learns user preferences from explicit, traceable evidence —

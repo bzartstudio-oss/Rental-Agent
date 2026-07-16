@@ -56,6 +56,31 @@ src/
     discovery_agent.py         # DiscoveryAgent — see 05_Platform_Discovery.md
     platform_registry.py         # reads/writes the `platforms` table
     known_platforms.py             # seed candidate list — see 05_Platform_Discovery.md
+    automatic/                       # [live, new package, v2.5 Step 13] the Automatic
+                                       # Platform Discovery Agent — see 29_Automatic_Platform_Discovery.md
+      __init__.py                        # imports providers/ -> self-registration
+      exceptions.py                        # DiscoveryException hierarchy
+      metadata.py                           # DiscoveryProviderMetadata
+      models.py                              # DiscoveryRequest/Run/Policy, PlatformCandidate/Evidence/
+                                               # VerificationResult/CapabilityEstimate/Evaluation,
+                                               # PlatformStatus (12)/PlatformClassification (13),
+                                               # DiscoveryStatistics/Comparison
+      base_provider.py                        # DiscoveryProvider (ABC) — metadata()/discover(request)
+      registry.py                              # DiscoveryProviderRegistry, register_discovery_provider()
+      factory.py                                # DiscoveryProviderFactory — get()/resolve()
+      normalization.py                           # normalize_domain/name, duplicate-candidate lookups
+      classification.py                           # deterministic keyword-scoring classifier
+      verification.py                              # PageFetcher protocol, HttpPageFetcher, domain/content checks
+      capability.py                                 # 14-capability heuristic estimator (always is_estimate=True)
+      evidence_collection.py                         # one DiscoveredURL + fetch -> the 15 named evidence types
+      statistics.py                                   # compute_discovery_statistics(), compare_discovery_runs()
+      service.py                                       # thin storage orchestration (mirrors feedback/service.py)
+      agent.py                                          # AutomaticDiscoveryAgent — the 12-step pipeline
+      report.py                                          # HTML + JSON discovery report generator
+      providers/
+        __init__.py                                        # eager imports -> self-registration
+        curated_seed_provider.py                             # surfaces known_platforms.py entries by country
+        manual_url_provider.py                                # surfaces DiscoveryRequest.manual_urls as-is
   connectors/
     __init__.py
     base.py                      # RawListing only — the old Connector ABC was removed in
@@ -193,6 +218,12 @@ src/
     analysis_metrics_repository.py                   # [v2.0 Step 6, live] apartment_analysis_metrics —
                                                        # data access only; this IS "AnalysisRepository"
                                                        # from the mission, see 19_Analysis_Engine.md
+    discovery_repository.py                            # [live, v2.5 Step 13] discovery_runs, platform_candidates,
+                                                         # platform_evidence, platform_verification_observations,
+                                                         # platform_capability_estimates, platform_duplicate_links,
+                                                         # discovery_provider_observations — data access only;
+                                                         # every table but platform_candidates/discovery_runs is
+                                                         # strictly append-only (no update/delete function exists)
   services/
     __init__.py
     report_generator.py                           # HTML Report Generator — see 09_Report_System.md
@@ -200,6 +231,8 @@ src/
     __init__.py
     cli.py                                          # entry point — the only place a human interacts with the system
     feedback_cli.py                                    # [live, v2.5 Step 12] record/profile/explain/history/undo/reset/export
+    discovery_cli.py                                    # [live, v2.5 Step 13] discover/list-*/compare-runs/
+                                                          # approve-candidate/reject-candidate/view-evidence/view-coverage-summary
   utils/
     __init__.py
     logging.py                                        # [v2.0 Step 7, live] get_logger()/StructuredFormatter —

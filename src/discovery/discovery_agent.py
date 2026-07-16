@@ -111,10 +111,12 @@ class DiscoveryAgent:
         return report
 
 
-def _normalize_homepage(url: str) -> str:
+def normalize_homepage(url: str) -> str:
     """Strip scheme/`www.`/trailing slash so http://www.example.com and
     https://example.com/ compare equal. Deliberately simple — see
-    docs/05_Platform_Discovery.md "Why Not Fuzzy Matching".
+    docs/05_Platform_Discovery.md "Why Not Fuzzy Matching". Public (not
+    underscore-prefixed) since v2.5 Step 13's `discovery.automatic.normalization`
+    reuses this exact function rather than reimplementing the same algorithm.
     """
     parsed = urlparse(url if "://" in url else f"//{url}")
     host = (parsed.netloc or parsed.path).lower()
@@ -127,7 +129,7 @@ def _find_duplicate(existing: list[Platform], candidate: PlatformCandidate) -> P
     for platform in existing:
         if platform.id == candidate.platform_id:
             return platform
-        if _normalize_homepage(platform.homepage) == _normalize_homepage(candidate.homepage):
+        if normalize_homepage(platform.homepage) == normalize_homepage(candidate.homepage):
             return platform
     return None
 

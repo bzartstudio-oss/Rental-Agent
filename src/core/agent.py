@@ -32,6 +32,7 @@ from src.providers import (
     build_provider_metrics,
 )
 from src.ranking.ranking_engine import RankingEngine
+from src.ranking_v2 import RankedApartmentV2, RankingContext, RankingEngineV2
 from src.search.search_request import SearchRequest
 from src.search_memory import search_memory_service
 from src.services.report_generator import generate_report
@@ -59,6 +60,7 @@ class RentalResearchAgent:
         ai_router: ProviderRouter | None = None,
         filter_engine: FilterEngine | None = None,
         geo_engine: GeographicEngine | None = None,
+        ranking_engine_v2: RankingEngineV2 | None = None,
     ) -> None:
         """`data_router`/`ai_router`/`filter_engine`/`geo_engine` are optional and
         default to `None` — every existing caller (every test that doesn't pass them)
@@ -80,7 +82,15 @@ class RentalResearchAgent:
         `generate_report()` alongside `analysis_results`/`ai_summary`, rather than
         wired into `AnalysisEngine`'s own scoring, per the same "diagram vs.
         implementation reconciliation" reasoning already applied to the Filter
-        Engine's own integration.
+        Engine's own integration. See docs/27_Intelligent_Ranking_Engine.md
+        "Integration" for `ranking_engine_v2`: when given, it re-scores every
+        already-ranked (v1) apartment with a real `RankingContext` (this run's own
+        `conn`/`analysis_results`/`geo_enrichments`) and produces a fully explained,
+        independent `list[RankedApartmentV2]` — v1's `RankingEngine` still does the
+        actual hard-filtering and still writes `search_results.rank`/`.score`
+        unchanged; `RankingEngineV2`'s output is passed to `generate_report()`
+        alongside `analysis_results`/`geo_enrichments`, the same "diagram vs.
+        implementation reconciliation" reasoning applied a third time.
         """
         self._db = db
         self._output_dir = output_dir
@@ -91,6 +101,7 @@ class RentalResearchAgent:
         self._ai_router = ai_router
         self._filter_engine = filter_engine
         self._geo_engine = geo_engine
+        self._ranking_engine_v2 = ranking_engine_v2
 
     def run(self, request: SearchRequest) -> SearchRunResult:
         """Runs one search to completion: persists the request, discovers relevant
@@ -239,6 +250,10 @@ class RentalResearchAgent:
 
         ranked = self._ranking.rank(apartments, request)
 
+        ranking_v2_results: list[RankedApartmentV2] | None = None
+        if self._ranking_engine_v2 is not None:
+            ranking_v2_results = self._run_ranking_v2(request, ranked, analysis_results, geo_enrichments)
+
         ai_summary: str | None = None
         if self._ai_router is not None:
             try:
@@ -269,6 +284,7 @@ class RentalResearchAgent:
             analysis_results=analysis_results,
             ai_summary=ai_summary,
             geo_enrichments=geo_enrichments,
+            ranking_v2_results=ranking_v2_results,
         )
         execution_time_ms = int((time.perf_counter() - started_at) * 1000)
 
@@ -487,3 +503,45 @@ class RentalResearchAgent:
             },
         )
         return enrichments
+
+    def _run_ranking_v2(
+        self,
+        request: SearchRequest,
+        ranked: list,
+        analysis_results: dict,
+        geo_enrichments: dict | None,
+    ) -> list[RankedApartmentV2]:
+        """Runs `self._ranking_engine_v2` over v1's own survivors (`ranked`'s
+        apartments — already hard-filtered), with a real `RankingContext` built from
+        whatever this run already computed: `conn`, `request.location`,
+        `analysis_results`, and `geo_enrichments` (empty dict when `geo_engine`
+        wasn't supplied, so every geo-dependent rule honestly degrades to "no
+        evidence" rather than crashing on a missing argument). `filter_results`/
+        `provider_health`/`search_comparison` are intentionally not auto-wired here
+        — see docs/27_Intelligent_Ranking_Engine.md "Integration" for why those three
+        remain available to any caller that builds its own `RankingContext` directly,
+        without this being their wiring point.
+        """
+        from src.ranking_v2 import compute_ranking_statistics
+
+        apartments = [entry.apartment for entry in ranked]
+        with self._db.transaction() as conn:
+            context = RankingContext(
+                conn=conn,
+                location=request.location,
+                analysis_results=analysis_results,
+                geo_enrichments=geo_enrichments or {},
+            )
+            results = self._ranking_engine_v2.rank(apartments, context)
+
+        statistics = compute_ranking_statistics(results)
+        logger.info(
+            "ranking engine v2 run",
+            extra={
+                "search_id": request.id,
+                "total_apartments": statistics.total_apartments,
+                "average_score": statistics.average_score,
+                "average_confidence": statistics.average_confidence,
+            },
+        )
+        return results

@@ -42,6 +42,7 @@ from src.analysis.models import AnalysisResult
 from src.core.config import OUTPUT_DIR
 from src.discovery import platform_registry
 from src.geography.models import GeoEnrichment, TravelMode
+from src.ranking_v2.models import RankedApartmentV2
 from src.storage import apartment_repository, search_repository
 from src.storage.database import Database
 
@@ -61,9 +62,11 @@ def generate_report(
     analysis_results: dict[str, AnalysisResult] | None = None,
     ai_summary: str | None = None,
     geo_enrichments: dict[str, GeoEnrichment] | None = None,
+    ranking_v2_results: list[RankedApartmentV2] | None = None,
 ) -> Path:
     analysis_results = analysis_results or {}
     geo_enrichments = geo_enrichments or {}
+    ranking_v2_by_id = {entry.apartment_id: entry for entry in (ranking_v2_results or [])}
 
     with db.transaction() as conn:
         search = search_repository.get_search_request(conn, search_id)
@@ -78,9 +81,11 @@ def generate_report(
             availability_history = apartment_repository.get_availability_history(conn, result.apartment_id)
             analysis = analysis_results.get(result.apartment_id)
             geo = geo_enrichments.get(result.apartment_id)
+            ranking_v2 = ranking_v2_by_id.get(result.apartment_id)
             rows_html.append(
                 _render_result(
-                    result, apartment, platform, images, price_history, availability_history, analysis, geo
+                    result, apartment, platform, images, price_history, availability_history,
+                    analysis, geo, ranking_v2,
                 )
             )
 
@@ -114,6 +119,9 @@ def _render_page(search, rows_html: list[str], ai_summary: str | None = None) ->
   .analysis-warning {{ color: #a15c00; }}
   .geo {{ margin-top: 0.5rem; }}
   .geo-detail {{ font-size: 0.8rem; color: #444; margin: 0.25rem 0 0; padding-left: 1.2rem; }}
+  .ranking-v2 {{ margin-top: 0.5rem; }}
+  .ranking-v2-positive {{ color: #1a7a3c; }}
+  .ranking-v2-negative {{ color: #a13c3c; }}
   .ai-summary {{ background: #f2f6fb; border: 1px solid #cddcec; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.95rem; }}
   a {{ color: #0055aa; }}
 </style>
@@ -152,6 +160,7 @@ def _render_result(
     availability_history,
     analysis: AnalysisResult | None,
     geo: GeoEnrichment | None = None,
+    ranking_v2: RankedApartmentV2 | None = None,
 ) -> str:
     photos_html = "".join(
         f'<img src="{escape(Path(image.local_path).as_uri())}" alt="listing photo">' for image in images
@@ -180,6 +189,7 @@ def _render_result(
   <div class="history">Price history: {price_trend or 'n/a'} &nbsp;|&nbsp; Availability history: {status_trend or 'n/a'}</div>
   {_render_analysis(analysis)}
   {_render_geo(geo)}
+  {_render_ranking_v2(ranking_v2)}
   <div><a href="{escape(apartment.url)}" target="_blank" rel="noopener">Original listing</a></div>
 </div>
 """
@@ -259,4 +269,30 @@ def _render_geo(geo: GeoEnrichment | None) -> str:
     <ul class="geo-detail">{''.join(distance_rows) or '<li>n/a</li>'}</ul>
     <div class="facts">Nearby services:</div>
     <ul class="geo-detail">{''.join(nearby_rows) or '<li>No curated nearby data yet</li>'}</ul>
+  </div>"""
+
+
+def _render_ranking_v2(ranking_v2: RankedApartmentV2 | None) -> str:
+    """"Display: Score, Confidence, Evidence, Top Positive Factors, Top Negative
+    Factors" (v2.5 Step 11 mission) — omitted entirely when no `RankingEngineV2`
+    result is available (no `ranking_engine_v2` was supplied), matching the same
+    honesty convention `_render_analysis()`/`_render_geo()` already follow.
+    """
+    if ranking_v2 is None:
+        return ""
+
+    confidence_text = (
+        f"{ranking_v2.confidence.overall:.2f}" if ranking_v2.confidence.overall is not None else "n/a"
+    )
+    positive_html = "".join(f"<li>{escape(reason)}</li>" for reason in ranking_v2.explanation.top_positive_factors)
+    negative_html = "".join(f"<li>{escape(reason)}</li>" for reason in ranking_v2.explanation.top_negative_factors)
+    warnings_html = (
+        f'<div class="facts">⚠ {escape("; ".join(ranking_v2.warnings))}</div>' if ranking_v2.warnings else ""
+    )
+
+    return f"""<div class="ranking-v2">
+    <div class="facts">Ranking Engine V2 — Score: {ranking_v2.final_score:.1f} (confidence: {confidence_text})</div>
+    <ul class="geo-detail ranking-v2-positive">{positive_html or '<li>No standout positive factors</li>'}</ul>
+    <ul class="geo-detail ranking-v2-negative">{negative_html or '<li>No standout negative factors</li>'}</ul>
+    {warnings_html}
   </div>"""

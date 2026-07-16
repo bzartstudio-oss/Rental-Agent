@@ -17,6 +17,7 @@ from src.discovery.known_platforms import ALL_KNOWN_PLATFORMS
 from src.filter_engine import FilterEngine
 from src.geography import GeographicEngine
 from src.providers import ProviderKind, ProviderRouter
+from src.ranking_v2 import COMPREHENSIVE_PROFILE, DEFAULT_PROFILE, RankingEngineV2
 from src.search.search_request import SearchRequest
 from src.storage.database import Database
 
@@ -59,6 +60,27 @@ def build_parser() -> argparse.ArgumentParser:
             "flow is unchanged."
         ),
     )
+    parser.add_argument(
+        "--use-ranking-v2",
+        action="store_true",
+        help=(
+            "Re-score results through the Intelligent Ranking Engine V2 (explainable, "
+            "evidence-based, user-configurable weights) and display Score/Confidence/"
+            "Top Factors in the report — see docs/27_Intelligent_Ranking_Engine.md. "
+            "Off by default; the default flow is unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--ranking-profile",
+        choices=("default", "comprehensive"),
+        default="default",
+        help=(
+            "Which built-in RankingProfile to use with --use-ranking-v2: 'default' "
+            "is the mission's own worked example (Price 40%%, Walking Distance 25%%, "
+            "Availability 15%%, Public Transport 10%%, Lifestyle 10%%); 'comprehensive' "
+            "weights every registered rule equally. Ignored without --use-ranking-v2."
+        ),
+    )
     return parser
 
 
@@ -88,6 +110,10 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
     ai_router = ProviderRouter(ProviderKind.AI) if args.use_provider_router else None
     filter_engine = FilterEngine() if args.use_filter_engine else None
     geo_engine = GeographicEngine() if args.use_geo_engine else None
+    ranking_engine_v2 = None
+    if args.use_ranking_v2:
+        profile = COMPREHENSIVE_PROFILE if args.ranking_profile == "comprehensive" else DEFAULT_PROFILE
+        ranking_engine_v2 = RankingEngineV2(profile=profile)
 
     agent = RentalResearchAgent(
         db,
@@ -96,6 +122,7 @@ def main(argv: list[str] | None = None, db: Database | None = None, output_dir: 
         ai_router=ai_router,
         filter_engine=filter_engine,
         geo_engine=geo_engine,
+        ranking_engine_v2=ranking_engine_v2,
     )
     result = agent.run(request)
 

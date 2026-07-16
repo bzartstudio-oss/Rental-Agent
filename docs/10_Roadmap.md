@@ -1,6 +1,6 @@
 # 10 — Roadmap
 
-Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests), **Step 9 — Dynamic Filter Engine** (done, 562 tests), which also fulfills the Version 2.0 Step 8 slot's original intent, and **Step 10 — Geographic Intelligence Engine** (done, 640 tests total) — see all three sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
+Status: **V1.0 (7 phases) + v1.1 (Multi-Platform Discovery Framework) live in code and tested, as of 2026-07-14.** Version 2.0 is fully designed; **Implementation Steps 1–7 are done** — Migration Framework (Sprint V2.0.1), Apartment History Engine (Step 2), Search Memory & Comparison Engine (Step 3), the Knowledge Engine (Step 4), an architecture cleanup pass (Step 4.5), the Connector SDK & Plugin Framework (Step 5), the Deep Analysis Engine (Step 6, 314 tests), and the First Production Connector — RentCast (Step 7, 361 tests). **Step 6 was built ahead of the originally-planned Step 7** (Dynamic Filter Engine) at explicit instruction; **Step 7 was then reassigned again**, this time to the First Production Connector — pulling forward the item "After v2.0: Still the Same Answer" (below) had deferred to *after* v2.0 entirely, at the user's explicit instruction. Dynamic Filter Engine is pushed to Step 8, still fully designed, not yet implemented. On top of the numbered steps, a separate, unnumbered **Provider Abstraction Layer** (`src/providers/`, 413 tests total) was added afterward, then validated (SDK Validation Sprint, 428 tests) and reviewed (Production Readiness Review, docs/23, no code changed). **Version 2.5** is a new, explicitly separate version built on top of all of the above: **Step 8 — Production Provider Framework** (done, 460 tests), **Step 9 — Dynamic Filter Engine** (done, 562 tests), which also fulfills the Version 2.0 Step 8 slot's original intent, **Step 10 — Geographic Intelligence Engine** (done, 640 tests), and **Step 11 — Intelligent Ranking Engine V2** (done, 734 tests total) — see all four sections below. The numbered list reflects the order things actually happened in, not the original sequencing; see each reordered step's entry for the reasoning. See "Version 2.0"/"Version 2.5" below. Update this as priorities shift — it should always reflect current reality, not the original plan.
 
 ## Reference Connector Strategy
 
@@ -543,6 +543,46 @@ same diagram-vs-implementation reconciliation already made explicitly for the De
 Analysis Engine (Step 6) and the Dynamic Filter Engine (Step 9). 78 new tests (640
 total: 562 existing untouched + 78 new). Full write-up:
 [26_Geographic_Intelligence.md](26_Geographic_Intelligence.md).
+
+## Version 2.5 Step 11 — Intelligent Ranking Engine V2 (done 2026-07-16)
+
+Transforms apartment ranking from a static weighted score into a modular,
+explainable, evidence-based decision engine — deterministic, no machine learning, no
+opaque scoring. `RankingEngineV2`/`RankingPipeline`/`RankingRule`/`RankingRuleRegistry`/
+`RankingWeights`/`RankingProfile`/`RankingEvidence`/`RankingExplanation`/
+`RankingConfidence`/`RankingStatistics` — a fully modular, self-registering plugin
+system mirroring `ConnectorRegistry`/`AnalysisRegistry`/`ProviderRegistry`/
+`FilterRegistry`/`GeoProviderRegistry`'s established shape.
+
+12 built-in rules, one per named input the mission's own INPUTS list requires
+(Dynamic Filters, Geographic Intelligence split into Walking Distance/Public
+Transport/Lifestyle, Apartment History, Knowledge Engine, Platform Reliability,
+Availability, Price History, Analysis Results, Provider Health, Connector
+Reliability, Search History) — none recompute a formula another engine already
+owns; each reads straight from that engine's own read functions
+(`knowledge_service.average_city_price()`/`platform_reliability()`/`connector_health()`,
+`apartment_repository.get_price_history()`, `GeoEnrichment`, `AnalysisResult`).
+Every score returns Final Score, Confidence, Evidence, Rule Contributions,
+Warnings, and Timestamp, exactly as the mission requires.
+
+The key honesty mechanism: per-apartment weight renormalization only among rules
+that actually have evidence for that specific apartment — a rule with no evidence
+is excluded from both the score numerator and the weight-normalization denominator,
+never counted as a zero. `RankingProfile` ships two built-in presets
+(`DEFAULT_PROFILE`, the mission's own worked example — Price 40%, Walking Distance
+25%, Availability 15%, Public Transport 10%, Lifestyle 10% — and
+`COMPREHENSIVE_PROFILE`, every rule weighted equally) plus supports any fully
+custom weighting.
+
+`RentalResearchAgent` gained one new, optional, default-`None` `ranking_engine_v2`
+parameter (byte-identical behavior for every existing caller); `ui/cli.py` gained
+`--use-ranking-v2` and `--ranking-profile {default,comprehensive}`. It re-scores v1
+`RankingEngine`'s own survivors with a real `RankingContext`, and its output is
+passed to the report generator as an independent artifact — never wired into v1
+`RankingEngine`'s or `AnalysisEngine`'s own scoring, the same diagram-vs-
+implementation reconciliation already made for Steps 6, 9, and 10. 94 new tests
+(734 total: 640 existing untouched + 94 new). Full write-up:
+[27_Intelligent_Ranking_Engine.md](27_Intelligent_Ranking_Engine.md).
 
 ## Beyond Version 2.0 (explicitly deferred)
 

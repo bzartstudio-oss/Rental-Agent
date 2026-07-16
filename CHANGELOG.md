@@ -4,6 +4,53 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.3] — 2026-07-16 — Intelligent Ranking Engine V2
+
+A modular, explainable, evidence-based decision engine — deterministic, no machine
+learning, no opaque scoring. Every score returns Final Score, Confidence, Evidence,
+Rule Contributions, Warnings, and Timestamp.
+
+### Added
+- `src/ranking_v2/` — `RankingEngineV2` (entry point), `RankingPipeline` (scoring
+  core), `RankingRule`/`RankingRuleRegistry` (self-registering plugin system),
+  `RankingWeights`/`RankingProfile` (user-configurable priorities, two built-in
+  presets), `RankingEvidence`/`RankingExplanation`/`RankingConfidence`
+  (per-apartment explainability), `RankingStatistics`.
+- 12 built-in rules, one per named input (Dynamic Filters, Geographic Intelligence
+  ×3, Apartment History, Knowledge Engine, Platform Reliability, Availability,
+  Price History, Analysis Results, Provider Health, Connector Reliability, Search
+  History) — none recompute a formula another engine already owns; each reads that
+  engine's own function directly.
+- `docs/27_Intelligent_Ranking_Engine.md`.
+- 94 new tests (734 total).
+
+### Changed
+- `RentalResearchAgent.__init__` gained one new, optional, default-`None`
+  `ranking_engine_v2` parameter. Every existing caller is unaffected.
+- `ui/cli.py` gained `--use-ranking-v2` and `--ranking-profile {default,comprehensive}`.
+- `services/report_generator.py` gained one new, optional, default-`None`
+  `ranking_v2_results` parameter, rendering Score/Confidence/Top Positive Factors/
+  Top Negative Factors per listing.
+
+### Explicitly not duplicated
+- Every rule reuses an existing engine's own read function
+  (`knowledge_service.average_city_price()`/`platform_reliability()`/
+  `connector_health()`, `apartment_repository.get_price_history()`,
+  `GeoEnrichment`, `AnalysisResult`) — no comparison or aggregation formula was
+  reimplemented.
+
+### Key design decision
+- Per-apartment weight renormalization: a rule with no evidence for a given
+  apartment is excluded from both the score numerator and the weight-normalization
+  denominator for that apartment, never counted as a zero — an apartment is never
+  punished for missing optional context nobody asked this run to compute.
+
+### Known, honestly-documented limitation
+- `filter_results`/`provider_health`/`search_comparison` are not auto-wired by
+  `core/agent.py` this sprint — all three rules remain real, registered, and
+  tested, just dormant through the standard pipeline until a future sprint
+  assembles that context.
+
 ## [2.5.2] — 2026-07-15 — Geographic Intelligence Engine
 
 A modular, provider-independent engine that calculates spatial relationships between

@@ -273,6 +273,29 @@ src/
     providers/
       __init__.py                                                          # eager imports -> self-registration
       haversine_provider.py                                                  # real distance + estimated travel time + curated nearby
+  ranking_v2/                                           # [live, new package] the Intelligent Ranking Engine V2 —
+                                                          # see 27_Intelligent_Ranking_Engine.md
+    __init__.py                                            # imports rules/ -> self-registration
+    base_rule.py                                              # RankingRule (ABC), RankingContext
+    metadata.py                                                # RankingRuleMetadata
+    models.py                                                   # RankingEvidence, RuleContribution, RankingConfidence,
+                                                                 # RankingExplanation, RankedApartmentV2
+    registry.py                                                  # RankingRuleRegistry, register_ranking_rule()
+    weights.py                                                    # RankingWeights
+    profile.py                                                     # RankingProfile, DEFAULT_PROFILE, COMPREHENSIVE_PROFILE
+    pipeline.py                                                     # RankingPipeline — renormalization + explanation
+    engine.py                                                        # RankingEngineV2 — the outward-facing entry point
+    statistics.py                                                     # RankingStatistics, compute_ranking_statistics()
+    exceptions.py                                                      # RankingException hierarchy
+    rules/
+      __init__.py                                                        # eager imports -> self-registration
+      _phrasing.py                                                         # shared qualitative-detail phrase helper
+      price_rules.py                                                        # price, price_trend
+      geo_rules.py                                                           # walking_distance, public_transport, lifestyle
+      availability_rules.py                                                   # availability
+      reliability_rules.py                                                     # platform_reliability, connector_reliability
+      context_rules.py                                                          # filter_preferences, analysis_composite,
+                                                                                 # provider_health, search_history
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

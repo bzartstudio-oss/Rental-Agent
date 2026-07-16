@@ -13,6 +13,7 @@ from pathlib import Path
 
 from src.analysis.models import AnalysisResult, AnalyzerResult, CompositeScore
 from src.geography.models import GeoEnrichment, GeoResult, NearbyPlace, TravelMode
+from src.ranking_v2.models import RankedApartmentV2, RankingConfidence, RankingExplanation
 from src.services.report_generator import generate_report
 from src.storage import apartment_repository, search_repository
 from src.storage.database import Database
@@ -280,6 +281,55 @@ class GeoSectionTests(ReportGeneratorTestCase):
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("A Nice Place", content)
         self.assertNotIn('class="geo"', content)
+
+
+class RankingV2SectionTests(ReportGeneratorTestCase):
+    """v2.5 Step 11 — "Display: Score, Confidence, Evidence, Top Positive Factors,
+    Top Negative Factors" (the mission's own words). Mirrors `GeoSectionTests`'s own
+    shape.
+    """
+
+    def _ranked(self) -> RankedApartmentV2:
+        confidence = RankingConfidence(overall=0.87, per_rule={"price": 1.0, "availability": 1.0})
+        explanation = RankingExplanation(
+            apartment_id="apt-1", final_score=92.4, confidence=confidence,
+            top_positive_factors=["Excellent walking distance", "Price below city average"],
+            top_negative_factors=["Below-average platform reliability"],
+            all_reasons=["Excellent walking distance", "Price below city average", "Below-average platform reliability"],
+        )
+        return RankedApartmentV2(
+            apartment_id="apt-1", rank=1, final_score=92.4, confidence=confidence,
+            contributions=[], explanation=explanation, warnings=[], computed_at=datetime.now(timezone.utc),
+        )
+
+    def test_ranking_v2_section_shows_score_confidence_and_factors(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            ranking_v2_results=[self._ranked()],
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn('class="ranking-v2"', content)
+        self.assertIn("92.4", content)
+        self.assertIn("0.87", content)
+        self.assertIn("Excellent walking distance", content)
+        self.assertIn("Below-average platform reliability", content)
+
+    def test_ranking_v2_section_omitted_when_not_passed(self) -> None:
+        report_path = generate_report(self.db, "search-1", output_dir=self.output_dir)
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertNotIn('class="ranking-v2"', content)
+
+    def test_missing_ranking_v2_for_an_apartment_omits_its_section_gracefully(self) -> None:
+        report_path = generate_report(
+            self.db, "search-1", output_dir=self.output_dir,
+            ranking_v2_results=[],  # apt-1 has no entry
+        )
+
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn("A Nice Place", content)
+        self.assertNotIn('class="ranking-v2"', content)
 
 
 if __name__ == "__main__":

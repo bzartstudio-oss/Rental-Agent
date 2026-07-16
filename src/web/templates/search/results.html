@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, data_value %}
+{% block title %}Search results — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Search results</h1>
+<p>{{ cards | length }} apartment(s) ranked for this search.</p>
+
+<form method="post" action="{{ url_for('comparison.save') }}">
+  {{ csrf_field() }}
+  <input type="hidden" name="search_id" value="{{ search_id }}">
+  <div class="grid grid-3">
+    {% for card in cards %}
+    <div class="apartment-card card">
+      <div class="checkbox-row">
+        <input type="checkbox" name="apartment_ids" value="{{ card.apartment_id }}" id="cmp_{{ card.apartment_id }}">
+        <label for="cmp_{{ card.apartment_id }}">Compare</label>
+      </div>
+      <strong>{{ data_value(card.title) }}</strong>
+      <span>{{ data_value(card.price) }} {{ card.currency.value or "" }}</span>
+      <span>{{ data_value(card.property_type) }} &middot; {{ data_value(card.availability) }}</span>
+      <span>{{ data_value(card.location) }}</span>
+      {% if card.score.value is not none %}
+        <span>Score {{ card.score.value | round(1) }} <span class="data-label">({{ card.score.label }})</span> — confidence {{ (card.confidence.value * 100) | round }}%</span>
+        {% if card.top_positive_factors %}<ul class="factor-list positive">{% for f in card.top_positive_factors %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+        {% if card.top_negative_factors %}<ul class="factor-list negative">{% for f in card.top_negative_factors %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+      {% else %}
+        <span class="data-unavailable">Ranking explanation not available for this run.</span>
+      {% endif %}
+      <span>Walking: {{ data_value(card.walking_minutes) }} min &middot; Transit: {{ data_value(card.transit_minutes) }} min</span>
+      <span>Platform: {{ card.platform_name }} — reliability {{ data_value(card.platform_reliability) }}</span>
+      <span>Last seen: {{ card.last_seen_at }}</span>
+      {% if card.missing_data %}
+        <span class="data-unavailable">Missing: {{ card.missing_data | join(", ") }}</span>
+      {% endif %}
+      <a href="{{ card.original_url }}" target="_blank" rel="noopener noreferrer">Original listing &#8599;</a>
+      <a href="{{ url_for('apartments.detail', apartment_id=card.apartment_id, search_id=search_id) }}">Details</a>
+      <form method="post" action="{{ url_for('feedback.record') }}">
+        {{ csrf_field() }}
+        <input type="hidden" name="apartment_id" value="{{ card.apartment_id }}">
+        <input type="hidden" name="search_id" value="{{ search_id }}">
+        <input type="hidden" name="event_type" value="shortlisted">
+        <button type="submit" class="secondary">Shortlist</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  <button type="submit">Compare selected (2-5)</button>
+</form>
+{% endblock %}

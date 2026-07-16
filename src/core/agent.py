@@ -53,6 +53,14 @@ class SearchRunResult:
     search_id: str
     apartments: list[Apartment]
     report_path: Path
+    # v2.5 Step 16 (docs/32_Web_Dashboard.md) — `RankingEngineV2`'s own explanation
+    # (score/confidence/top factors) has no persisted form anywhere (only v1's
+    # rank/score reach `search_results`); the web dashboard's results/detail pages
+    # need it without re-running ranking a second time, so `run()` now hands back
+    # what it already computed instead of discarding it. `None` (every existing
+    # caller, and any run without `ranking_engine_v2` supplied) is unchanged
+    # behavior — this field is purely additive.
+    ranking_v2_results: list[RankedApartmentV2] | None = None
 
 
 class RentalResearchAgent:
@@ -360,7 +368,10 @@ class RentalResearchAgent:
                     observed_at=datetime.now(timezone.utc),
                 )
 
-        return SearchRunResult(search_id=request.id, apartments=apartments, report_path=report_path)
+        return SearchRunResult(
+            search_id=request.id, apartments=apartments, report_path=report_path,
+            ranking_v2_results=ranking_v2_results,
+        )
 
     def _run_data_router(
         self,

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, badge %}
+{% block title %}Platform Discovery — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Automatic Platform Discovery</h1>
+
+<div class="card">
+  <h2>Run manual discovery</h2>
+  <form method="post" action="{{ url_for('discovery.run') }}">
+    {{ csrf_field() }}
+    <div class="grid grid-3">
+      <div class="field"><label for="country">Country</label><input type="text" id="country" name="country"></div>
+      <div class="field"><label for="region">Region</label><input type="text" id="region" name="region"></div>
+      <div class="field"><label for="city">City</label><input type="text" id="city" name="city"></div>
+    </div>
+    <div class="field">
+      <label>Rental category</label>
+      <div class="checkbox-row"><input type="checkbox" id="cat_apartment" name="rental_categories" value="apartment"><label for="cat_apartment">Apartment</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="cat_room" name="rental_categories" value="room"><label for="cat_room">Room / shared housing</label></div>
+    </div>
+    <button type="submit">Run discovery</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Coverage summary</h2>
+  <pre>{{ summary.as_dict() }}</pre>
+</div>
+
+<div class="card">
+  <h2>Discovered candidates</h2>
+  {% if candidates %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Domain</th><th>Status</th><th>Confidence</th><th></th></tr></thead>
+      <tbody>
+      {% for candidate in candidates %}
+        <tr>
+          <td>{{ candidate.name }}</td>
+          <td>{{ candidate.normalized_domain }}</td>
+          <td>{{ candidate.status.value if candidate.status.value is defined else candidate.status }}</td>
+          <td>{{ candidate.confidence if candidate.confidence is not none else "not available" }}</td>
+          <td><a href="{{ url_for('discovery.candidate_detail', candidate_id=candidate.candidate_id) }}">View</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <p class="data-unavailable">No candidates discovered yet.</p>
+  {% endif %}
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Verified platforms</h2>
+    {% if platforms %}
+      <ul>{% for platform in platforms %}<li>{{ platform.name }} {% if platform.connector_available %}{{ badge("connector available", "badge-success") }}{% else %}{{ badge("catalogued only", "badge-pending") }}{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">No platforms registered.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Missing connectors</h2>
+    {% if missing_connectors %}
+      <ul>{% for candidate in missing_connectors %}<li>{{ candidate.name }} ({{ candidate.normalized_domain }})</li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">None.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

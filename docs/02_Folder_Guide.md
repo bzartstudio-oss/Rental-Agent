@@ -239,6 +239,11 @@ src/
                                                           # preferences/batches/deliveries are current-state (one
                                                           # mutation function each), every other table is strictly
                                                           # append-only
+    web_repository.py                                    # [live, v2.5 Step 16] web_jobs/web_ui_preferences/
+                                                           # web_saved_comparisons/web_recent_views — data access only;
+                                                           # web_jobs/web_ui_preferences are current-state (one mutation
+                                                           # function each), web_saved_comparisons/web_recent_views are
+                                                           # strictly append-only
   services/
     __init__.py
     report_generator.py                           # HTML Report Generator — see 09_Report_System.md
@@ -447,6 +452,48 @@ src/
       helpers.py                                                              # apartment_for_event/apartment_image_paths/report_links_for_run
       event_alert_templates.py                                                # 6 immediate alert templates, one shared base
       digest_templates.py                                                     # daily_digest/weekly_digest, one shared base
+  web/                                                   # [live, new package, v2.5 Step 16] the Web Dashboard & API —
+                                                          # see 32_Web_Dashboard.md
+    __init__.py
+    constants.py                                          # DEFAULT_PROFILE_ID, API_PREFIX, job type/status constants
+    configuration.py                                        # WebConfiguration — host/port/debug/secret key, from_env()
+    dependencies.py                                          # WebDependencies — constructs every engine instance once per process
+    application.py                                            # WebApplication (create_app() factory), get_facade()/get_dependencies()
+    security.py                                                # WebSecurity — CSRF, security headers, safe_join, is_safe_url
+    error_handler.py                                            # WebErrorHandler, WebValidationError, WebNotFoundError
+    health.py                                                    # WebHealth — aggregates every engine's own health signal
+    statistics.py                                                 # WebStatistics — dashboard/health-page counts
+    facade.py                                                      # WebServiceFacade — the one call surface every route uses
+    jobs/                                                            # local job runner — see 32_Web_Dashboard.md "Job Model"
+      __init__.py
+      models.py                                                        # Job, JobStatus — domain layer
+      service.py                                                        # thin storage orchestration (mirrors monitoring/service.py)
+      runner.py                                                          # JobRunner — threading.Thread-based execution
+    forms/                                                            # request-data validation, never a business decision
+      __init__.py
+      validation.py                                                     # shared parse_safe_id/parse_optional_float/parse_safe_url/...
+      search_form.py                                                     # dynamic filter section driven by FilterRegistry.all()
+      saved_search_form.py
+      feedback_form.py
+      discovery_form.py
+      notification_form.py
+    presenters/                                                      # pure display formatting, never business math
+      __init__.py
+      serialization.py                                                  # to_jsonable() — the one dataclass/enum/datetime -> JSON converter
+      apartment_presenter.py                                             # confirmed/estimated/inferred/unavailable labeling
+      status_presenter.py                                                # severity/job-status/delivery-status -> CSS class helpers
+    routes/                                                          # HTML Blueprints — one per area
+      __init__.py                                                       # register_routes()
+      dashboard.py, search.py, apartments.py, comparison.py, saved_searches.py,
+      monitoring.py, notifications.py, discovery.py, feedback.py, health.py
+    api/                                                             # JSON API v1 Blueprints, mounted under /api/v1/
+      __init__.py                                                       # register_api()
+      searches.py, apartments.py, saved_searches.py, monitoring.py,
+      notifications.py, feedback.py, preferences.py, discovery.py, health.py
+    templates/                                                       # Jinja2 — base.html, _macros.html, one folder per area
+    static/
+      css/style.css                                                     # hand-written, CSS Grid, no build step
+      js/app.js                                                         # job-status polling + destructive-action confirmation only
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

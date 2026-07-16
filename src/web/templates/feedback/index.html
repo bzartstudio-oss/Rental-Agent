@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}Preferences — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Your Preference Profile</h1>
+
+<form method="get" action="{{ url_for('feedback.index') }}">
+  <label for="mode">Mode</label>
+  <select id="mode" name="mode" onchange="this.form.submit()">
+    <option value="explicit_only" {% if mode == "explicit_only" %}selected{% endif %}>Explicit only</option>
+    <option value="suggested" {% if mode == "suggested" %}selected{% endif %}>Suggested</option>
+    <option value="assisted" {% if mode == "assisted" %}selected{% endif %}>Assisted</option>
+  </select>
+</form>
+
+<div class="card">
+  <form method="post" action="{{ url_for('feedback.reset') }}" data-confirm="Reset every inferred preference to neutral? Explicit settings are untouched.">
+    {{ csrf_field() }}
+    <button type="submit" class="secondary">Reset inferred preferences</button>
+  </form>
+</div>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Preference</th><th>Value</th><th>Confidence</th><th>Source</th><th></th></tr></thead>
+  <tbody>
+  {% for key, value in profile.preferences.items() %}
+    <tr>
+      <td>{{ key }}</td>
+      <td>{{ value.current_value }}</td>
+      <td>{{ (value.confidence.overall * 100) | round if value.confidence.overall is not none else "not available" }}%</td>
+      <td>{{ "explicit" if value.is_explicit else "inferred" }}</td>
+      <td><a href="{{ url_for('feedback.explain', preference_key=key) }}">Explain</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

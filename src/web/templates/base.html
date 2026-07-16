@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Rental Intelligence Platform{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <header class="app-header">
+    <a class="brand" href="{{ url_for('dashboard.index') }}">Rental Intelligence Platform</a>
+    <nav class="app-nav" aria-label="Main navigation">
+      <a href="{{ url_for('dashboard.index') }}" {% if active_nav == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+      <a href="{{ url_for('search.new_search') }}" {% if active_nav == 'search' %}aria-current="page"{% endif %}>New Search</a>
+      <a href="{{ url_for('saved_searches.index') }}" {% if active_nav == 'saved_searches' %}aria-current="page"{% endif %}>Saved Searches</a>
+      <a href="{{ url_for('monitoring.index') }}" {% if active_nav == 'monitoring' %}aria-current="page"{% endif %}>Monitoring</a>
+      <a href="{{ url_for('notifications.index') }}" {% if active_nav == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
+      <a href="{{ url_for('discovery.index') }}" {% if active_nav == 'discovery' %}aria-current="page"{% endif %}>Discovery</a>
+      <a href="{{ url_for('feedback.index') }}" {% if active_nav == 'feedback' %}aria-current="page"{% endif %}>Preferences</a>
+      <a href="{{ url_for('health.index') }}" {% if active_nav == 'health' %}aria-current="page"{% endif %}>System Health</a>
+    </nav>
+  </header>
+  <main id="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}" role="status">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="app-footer">
+    Rental Intelligence Platform — Web Dashboard (v2.5 Step 16). Local, single-user. See docs/32_Web_Dashboard.md.
+  </footer>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

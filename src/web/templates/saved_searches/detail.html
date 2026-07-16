@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, badge %}
+{% block title %}{{ saved_search.name }} — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>{{ saved_search.name }}</h1>
+<p>{{ badge("monitoring on" if saved_search.enabled else "monitoring off", "badge-success" if saved_search.enabled else "badge-pending") }} — version {{ saved_search.current_version }}</p>
+
+<div class="card">
+  <form method="post" action="{{ url_for('saved_searches.run_now', saved_search_id=saved_search.saved_search_id) }}" style="display:inline">
+    {{ csrf_field() }}
+    <button type="submit">Run now</button>
+  </form>
+  {% if saved_search.enabled %}
+    <form method="post" action="{{ url_for('saved_searches.disable', saved_search_id=saved_search.saved_search_id) }}" style="display:inline">
+      {{ csrf_field() }}
+      <button type="submit" class="secondary">Disable monitoring</button>
+    </form>
+  {% else %}
+    <form method="post" action="{{ url_for('saved_searches.enable', saved_search_id=saved_search.saved_search_id) }}" style="display:inline">
+      {{ csrf_field() }}
+      <button type="submit" class="secondary">Enable monitoring</button>
+    </form>
+  {% endif %}
+  {% if schedule and schedule.next_run_at %}<p>Next run: {{ schedule.next_run_at }}</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Runs</h2>
+  {% if runs %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Started</th><th>Status</th><th>Events</th><th></th></tr></thead>
+      <tbody>
+      {% for run in runs %}
+        <tr>
+          <td>{{ run.started_at }}</td>
+          <td>{{ badge(run.status.value if run.status.value is defined else run.status, "badge-success" if (run.status.value if run.status.value is defined else run.status) == "completed" else "badge-warning") }}</td>
+          <td>{{ run.event_count }}</td>
+          <td><a href="{{ url_for('monitoring.events', saved_search_id=saved_search.saved_search_id) }}">View events</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <p class="data-unavailable">No runs yet — click "Run now" to execute this saved search.</p>
+  {% endif %}
+  {% if runs | length >= 2 %}
+    <form method="get" action="{{ url_for('saved_searches.compare_runs', saved_search_id=saved_search.saved_search_id) }}">
+      <div class="field"><label for="run_a">Compare run A</label>
+        <select id="run_a" name="run_a">{% for run in runs %}<option value="{{ run.monitoring_run_id }}">{{ run.started_at }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="run_b">Compare run B</label>
+        <select id="run_b" name="run_b">{% for run in runs %}<option value="{{ run.monitoring_run_id }}">{{ run.started_at }}</option>{% endfor %}</select></div>
+      <button type="submit" class="secondary">Compare</button>
+    </form>
+  {% endif %}
+  {% if comparison %}
+    <h3>Comparison</h3>
+    <pre>{{ comparison }}</pre>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Versions</h2>
+  <ul>
+  {% for version in versions %}
+    <li>v{{ version.version }} — {{ version.created_at }} — {{ version.request.location }}</li>
+  {% endfor %}
+  </ul>
+</div>
+
+<p><a href="{{ url_for('notifications.new_preference', saved_search_id=saved_search.saved_search_id) }}">Configure notifications for this saved search</a></p>
+{% endblock %}

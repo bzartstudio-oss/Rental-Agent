@@ -932,3 +932,72 @@ class NotificationAcknowledgementRecord:
     acknowledged_by: str | None = None
     note: str | None = None
     id: int | None = None
+
+
+@dataclass
+class WebJobRecord:
+    """Mirrors one row of `web_jobs` (migration 0011, v2.5 Step 16) — one
+    current-state row per background job the local job runner drives
+    (status/progress/current_stage/result_reference genuinely change as the
+    job runs), the same "current-state row" shape `monitoring_runs`/
+    `platform_candidates` already use. `request_reference`/`result_reference`
+    are foreign identifiers into existing tables (a search_id, a
+    monitoring_run_id, a discovery run_id) — never a copy of their data.
+    """
+
+    job_id: str
+    job_type: str
+    status: str
+    created_at: datetime
+    profile_id: str | None = None
+    request_reference: str | None = None
+    progress: float = 0.0
+    current_stage: str | None = None
+    result_reference: str | None = None
+    error_summary: str | None = None
+    warnings: list[str] = field(default_factory=list)
+    cancellation_requested: bool = False
+    metadata: dict = field(default_factory=dict)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass
+class WebUIPreferenceRecord:
+    """Mirrors one row of `web_ui_preferences` (migration 0011) — generic
+    per-profile key/value UI settings with no home in any existing engine's
+    own configuration (e.g. default ranking profile, default page size).
+    """
+
+    profile_id: str
+    key: str
+    value: object
+    updated_at: datetime
+    id: int | None = None
+
+
+@dataclass
+class WebSavedComparisonRecord:
+    """Mirrors one row of `web_saved_comparisons` (migration 0011) — just the
+    apartment id list a user grouped for side-by-side comparison, never a
+    copy of apartment data itself.
+    """
+
+    comparison_id: str
+    apartment_ids: list[str]
+    created_at: datetime
+    profile_id: str | None = None
+    name: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class WebRecentViewRecord:
+    """Mirrors one row of `web_recent_views` (migration 0011) — append-only
+    log feeding the dashboard's recently-viewed widget."""
+
+    apartment_id: str
+    viewed_at: datetime
+    profile_id: str | None = None
+    id: int | None = None

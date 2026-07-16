@@ -524,3 +524,124 @@ alone), statistics tests, scheduler-interface tests, a full
 configured secret through `channel_info()`). New
 `docs/31_Notification_Delivery.md`. Full detail in
 `learning/architecture_notes.md`.
+
+## 2026-07-16 — Version 2.5 Step 16: Web Dashboard and API
+
+The first non-CLI interface to this platform, and the first sprint whose own
+mission text asked "inspect the environment and choose a framework" rather
+than naming one. Checked what was actually true of the codebase before
+deciding: `grep -r "^import pydantic\|^from pydantic" src/` returned
+nothing (pydantic is only a transitive `openai` dependency), every existing
+model is a plain dataclass, every read/write goes through
+`Database.transaction()` (fully synchronous), and every prior UI layer is a
+synchronous `argparse` CLI. That made Flask the honest choice, not FastAPI —
+adopting FastAPI's async/pydantic idiom over a codebase this synchronous
+would have meant either wrapping every blocking call in a thread pool or
+writing async routes that immediately block anyway.
+
+The hardest design question wasn't the framework — it was how to show a real
+`RankingEngineV2` explanation (score/confidence/top factors) on the results
+and apartment-detail pages without either fabricating it or duplicating
+`RankingEngineV2`'s own logic in the web layer. Neither `search_results` (v1
+rank/score only) nor any other table persists v2's explanation — it's
+in-memory-only, handed straight to the HTML report generator inside the same
+`RentalResearchAgent.run()` call that computed it, then discarded.
+Re-running `RankingEngineV2` a second time from the web layer would have
+been a real duplication of business logic (computing the same result twice,
+non-deterministically-in-spirit even if deterministic in practice), and *not*
+showing it at all would have under-delivered on an explicit mission
+requirement. Resolved by making `core/agent.py::run()` hand back what it
+already computes: one new, optional, default-`None` field on
+`SearchRunResult` (`ranking_v2_results`) — zero behavior change for any
+existing caller (confirmed by a dedicated
+`tests/web/test_backward_compatibility.py` asserting the field is `None`
+whenever `ranking_engine_v2` isn't supplied, exactly as before). The
+`JobRunner` then captures a small, purely presentational snapshot (rank,
+final_score, confidence, top factors — never the full `RankedApartmentV2`
+object graph) into the job's own `metadata_json`, scoped honestly to "what
+this specific search run computed," not a permanent apartment attribute.
+
+The mission's own "Do not create duplicate filter logic in the web layer"
+instruction was applied literally rather than loosely: the entire dynamic
+filter section of the search/saved-search forms (LOCATION/PROPERTY/AMENITIES/
+BUDGET/etc. from the mission's own wishlist) is generated directly from
+`FilterRegistry.all()`, grouped by each filter's own `category` and rendered
+by its own `value_type` — no filter's validation rule is hand-copied into a
+form module, and a future 40th registered filter needs zero web-layer
+change. The trade-off: the web layer's section labels are the Dynamic Filter
+Engine's own categories (`price`/`property`/`location`/`amenities`/
+`platform`/`media`), not a literal one-to-one match to the mission's eight
+named sections — documented in `docs/32_Web_Dashboard.md`'s own "Known
+Limitations" rather than silently glossed over.
+
+A second honest limitation, caught by re-reading the mission text carefully
+rather than assumed away: the comparison page's "true monthly cost" and
+"user-preference match" columns are not shown. No engine anywhere in this
+codebase computes either value — inventing one would be exactly the kind of
+fabrication this project's own discipline forbids. The comparison page shows
+every field a real engine actually computed instead, each one honestly
+labeled when absent ("not available," never a guessed value).
+
+A genuine Jinja2 gotcha, found by an actual test failure rather than by
+inspection: `{% from "_macros.html" import csrf_field %}` does not give the
+imported macro access to the calling template's context (only `with context`
+would, and only that one caller would remember to add it) — a global
+injected via `@app.context_processor` is invisible inside a macro imported
+that way. Every page that used the shared `csrf_field()` macro failed with
+`UndefinedError: 'csrf_token' is undefined`. Fixed by registering
+`csrf_token`/the status-badge helpers as real Jinja *environment* globals
+(`app.jinja_env.globals[...] = ...`) instead of via `context_processor` —
+environment globals are visible from any imported macro regardless of
+`with context`, which a context-processor-injected value is not.
+
+`JobRunner` (a plain `threading.Thread` per job, no Redis/Celery) proved
+sufficient for the mission's own "prepare an interface that can later use a
+real task queue" requirement without actually needing one yet: every route/
+form/template only ever reads a `Job` back through `jobs.service.get_job()`,
+so the seam a real queue would replace is already isolated to three methods
+on `JobRunner` itself. Progress reporting is deliberately two-state
+(`pending`/`running` → a terminal status), not a smoothly animating
+percentage — `RentalResearchAgent.run()` has no progress-callback hook, and
+fabricating intermediate percentages to make a nicer-looking progress bar
+would have been dishonest in exactly the way this project's own principles
+warn against.
+
+A full 20-step live demonstration (real Flask app, real SQLite database,
+real demo-platform connector via Playwright, real background job execution)
+verified: a search submitted through the HTML form actually completes and
+produces ranked, original-URL-linked apartment cards; a saved search's
+"Run now" produces a real monitoring run whose events show up on the
+monitoring page; a notification preference actually delivers a console
+notification; a discovery candidate can be approved into the real Platform
+Registry; feedback recorded from the apartment detail page actually changes
+the preference profile; and the existing CLI (`ui/cli.py::main()`) still
+runs an unmodified search end-to-end against the same database shape.
+
+99 new tests (1285 total: 1186 existing untouched + 99 new) — migration
+tests for all 4 new tables/indexes, job-persistence tests (survives a fresh
+database read, cancellation flag persists, unknown job id resolves to
+`None`), job-runner tests (a real search job reaches a terminal state and
+records a `result_reference`; a raised exception inside the background
+thread becomes an honest `FAILED` job with an error summary, never an
+unhandled thread crash), form-validation tests (path traversal/negative
+prices/impossible ranges/unsafe URLs/excessive limits/unknown enum values,
+all rejected before reaching the facade), a full `WebServiceFacade`
+integration suite (search workflow end-to-end, apartment detail's honest
+missing-data labeling, comparison's 2-5 apartment bounds, saved-search
+create/version/enable/disable/run-now, monitoring-event acknowledgement,
+notification-preference lifecycle and secret-free channel status, discovery
+candidate approve/reject against seeded fixture data — never a real network
+discovery run in automated tests, feedback record/profile/reset, health/
+statistics collection), route tests (every page renders, unknown ids 404 via
+the real template, results/detail pages show real original listing URLs, a
+job page "survives a refresh" by reading fresh from the database each time),
+API tests (job creation/polling/JSON error shapes), accessibility-smoke
+tests (skip link, `lang` attribute, viewport meta, every form label's `for`
+resolves to a real input id), a responsive-stylesheet check, backward-
+compatibility tests (the real CLI still runs; `SearchRunResult`'s new field
+defaults to `None`), a performance-regression smoke test, and security tests
+(CSRF accepted/rejected/exempt-for-API, path traversal rejected at the route
+and at `safe_join()`, security headers present on every response, secrets
+never exposed by channel status, request-size limit enforced, localhost-only
+default binding). New `docs/32_Web_Dashboard.md`. Full detail in
+`learning/architecture_notes.md`.

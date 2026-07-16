@@ -1,0 +1,134 @@
+/* Rental Intelligence Platform — Web Dashboard (v2.5 Step 16)
+   Server-rendered, minimal JS, accessible-first. See docs/32_Web_Dashboard.md "Design". */
+
+:root {
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-text: #1b1f24;
+  --color-muted: #5a6472;
+  --color-border: #d9dee4;
+  --color-primary: #1c5fa8;
+  --color-primary-dark: #144778;
+  --color-success: #1a7f4f;
+  --color-warning: #9a6a00;
+  --color-critical: #b3261e;
+  --color-pending: #5a6472;
+  --focus-ring: 3px solid #1c5fa8aa;
+  --radius: 6px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+a { color: var(--color-primary); }
+a:focus, button:focus, input:focus, select:focus, textarea:focus, [tabindex]:focus {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute; left: -999px; top: auto;
+  background: var(--color-primary); color: #fff; padding: 0.5rem 1rem; z-index: 100;
+}
+.skip-link:focus { left: 1rem; top: 1rem; }
+
+header.app-header {
+  background: var(--color-primary-dark);
+  color: #fff;
+  padding: 0.75rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
+}
+header.app-header a { color: #fff; text-decoration: none; }
+header.app-header .brand { font-weight: 700; font-size: 1.1rem; }
+
+nav.app-nav {
+  display: flex; flex-wrap: wrap; gap: 0.25rem 1rem;
+}
+nav.app-nav a {
+  padding: 0.35rem 0.5rem; border-radius: var(--radius);
+}
+nav.app-nav a[aria-current="page"] { background: rgba(255,255,255,0.18); font-weight: 600; }
+
+main {
+  max-width: 1200px;
+  margin: 1.25rem auto;
+  padding: 0 1rem 3rem;
+}
+
+.flash {
+  padding: 0.75rem 1rem; border-radius: var(--radius); margin-bottom: 1rem;
+  border: 1px solid var(--color-border);
+}
+.flash-error { background: #fdeceb; border-color: var(--color-critical); }
+.flash-success { background: #e9f7f0; border-color: var(--color-success); }
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.grid { display: grid; gap: 1rem; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+fieldset { border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: 1rem; }
+legend { font-weight: 600; padding: 0 0.5rem; }
+label { display: block; font-weight: 500; margin-bottom: 0.2rem; }
+.field { margin-bottom: 0.75rem; }
+.field small { color: var(--color-muted); }
+input[type=text], input[type=number], input[type=date], input[type=time], input[type=email], select, textarea {
+  width: 100%; padding: 0.4rem 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius);
+  font-size: 1rem; background: #fff; color: var(--color-text);
+}
+.checkbox-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
+.checkbox-row input { width: auto; }
+
+button, .button {
+  display: inline-block; background: var(--color-primary); color: #fff; border: none;
+  padding: 0.5rem 1rem; border-radius: var(--radius); font-size: 1rem; cursor: pointer; text-decoration: none;
+}
+button:hover, .button:hover { background: var(--color-primary-dark); }
+button.secondary, .button.secondary { background: var(--color-surface); color: var(--color-primary); border: 1px solid var(--color-primary); }
+button.danger, .button.danger { background: var(--color-critical); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border); }
+th { color: var(--color-muted); font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+
+.badge {
+  display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+  color: #fff;
+}
+.badge-success { background: var(--color-success); }
+.badge-warning { background: var(--color-warning); }
+.badge-critical { background: var(--color-critical); }
+.badge-pending { background: var(--color-pending); }
+.badge-running { background: var(--color-primary); }
+.badge-info { background: var(--color-primary); }
+
+.data-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted); }
+.data-unavailable { color: var(--color-muted); font-style: italic; }
+
+.apartment-card { display: flex; flex-direction: column; gap: 0.4rem; }
+.apartment-card img { width: 100%; height: 160px; object-fit: cover; border-radius: var(--radius); background: #eee; }
+.factor-list { margin: 0; padding-left: 1.1rem; }
+.factor-list.negative { color: var(--color-critical); }
+.factor-list.positive { color: var(--color-success); }
+
+footer.app-footer { text-align: center; color: var(--color-muted); padding: 2rem 1rem; font-size: 0.85rem; }
+
+@media (max-width: 640px) {
+  main { padding: 0 0.5rem 2rem; }
+  nav.app-nav { gap: 0.15rem 0.5rem; font-size: 0.9rem; }
+}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, badge %}
+{% block title %}Search job — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Search job {{ job.job_id[:8] }}</h1>
+<div class="card"
+     data-job-poll-url="{{ url_for('search.job_status', job_id=job.job_id) }}"
+     data-job-done-redirect="{{ url_for('search.results', search_id='__RESULT__') }}">
+  <p>Status: <span data-job-status>{{ badge(job.status, job_status_css_class(job.status)) }}</span></p>
+  <p>Stage: <span data-job-stage>{{ job.current_stage or "" }}</span></p>
+  <progress data-job-progress max="100" value="{{ (job.progress * 100) | round }}"></progress>
+  {% if job.error_summary %}
+    <p role="alert">{{ job.error_summary }}</p>
+  {% endif %}
+  {% if job.warnings %}
+    <ul>{% for warning in job.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if job.status in ("pending", "running") %}
+    <form method="post" action="{{ url_for('search.cancel_job', job_id=job.job_id) }}" data-confirm="Cancel this search job?">
+      {{ csrf_field() }}
+      <button type="submit" class="secondary">Cancel</button>
+    </form>
+  {% elif job.status in ("completed", "partial") %}
+    <a class="button" href="{{ url_for('search.results', search_id=job.result_reference) }}">View results</a>
+  {% endif %}
+</div>
+<p><small>This page refreshes itself automatically until the job finishes.</small></p>
+{% endblock %}

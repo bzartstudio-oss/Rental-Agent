@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}Create Saved Search — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Create Saved Search</h1>
+<form method="post" action="{{ url_for('saved_searches.create') }}">
+  {{ csrf_field() }}
+  <div class="field"><label for="name">Name</label><input type="text" id="name" name="name" required></div>
+  <div class="field"><label for="description">Description</label><textarea id="description" name="description"></textarea></div>
+
+  <fieldset>
+    <legend>Location</legend>
+    <div class="grid grid-2">
+      <div class="field"><label for="country">Country</label><input type="text" id="country" name="country"></div>
+      <div class="field"><label for="city">City</label><input type="text" id="city" name="city"></div>
+      <div class="field"><label for="location">Or free-text location</label><input type="text" id="location" name="location"></div>
+    </div>
+    <p><small>Also used as the monitoring destination for platform-discovery refresh.</small></p>
+    <div class="grid grid-2">
+      <div class="field"><label for="destination_country">Monitoring destination country</label><input type="text" id="destination_country" name="destination_country"></div>
+      <div class="field"><label for="destination_city">Monitoring destination city</label><input type="text" id="destination_city" name="destination_city"></div>
+    </div>
+  </fieldset>
+
+  {% for category, filters in filter_categories.items() %}
+  <fieldset>
+    <legend>{{ category | capitalize }}</legend>
+    <div class="grid grid-3">
+      {% for meta in filters %}
+      <div class="field">
+        <label for="filter__{{ meta.key }}">{{ meta.display_name }}</label>
+        {% if meta.value_type == "boolean" %}
+          <div class="checkbox-row"><input type="checkbox" id="filter__{{ meta.key }}" name="filter__{{ meta.key }}"><span>{{ meta.description }}</span></div>
+        {% elif meta.value_type == "number" %}
+          <input type="number" step="any" min="0" id="filter__{{ meta.key }}" name="filter__{{ meta.key }}">
+        {% else %}
+          <input type="text" id="filter__{{ meta.key }}" name="filter__{{ meta.key }}">
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endfor %}
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="enable_monitoring" name="enable_monitoring" checked>
+    <label for="enable_monitoring">Enable monitoring immediately</label>
+  </div>
+  <button type="submit">Create saved search</button>
+</form>
+{% endblock %}

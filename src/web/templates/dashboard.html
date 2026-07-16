@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge %}
+{% block title %}Dashboard — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="grid grid-3">
+  <div class="card">
+    <h2>Database</h2>
+    <p>{{ statistics.apartment_count }} apartments &middot; {{ statistics.search_count }} searches</p>
+    <p>{{ statistics.platform_count }} platforms &middot; {{ statistics.saved_search_count }} saved searches</p>
+    <p>{{ statistics.monitoring_event_count }} monitoring events &middot; {{ statistics.discovery_candidate_count }} discovery candidates</p>
+    <p>Database size: {{ (statistics.database_size_bytes / 1024 / 1024) | round(2) }} MB</p>
+  </div>
+  <div class="card">
+    <h2>Next scheduled monitoring run</h2>
+    {% if next_run_at %}
+      <p>{{ next_run_at }}</p>
+    {% else %}
+      <p class="data-unavailable">No saved search is currently scheduled.</p>
+    {% endif %}
+    <a class="button secondary" href="{{ url_for('monitoring.index') }}">View monitoring</a>
+  </div>
+  <div class="card">
+    <h2>Connector health</h2>
+    {% if connector_health %}
+      <ul>
+      {% for health in connector_health[:5] %}
+        <li>{{ health.platform_id }}: {{ health.success_count }} ok / {{ health.failure_count }} failed</li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p class="data-unavailable">No connector observations yet.</p>
+    {% endif %}
+    <a class="button secondary" href="{{ url_for('health.index') }}">System health</a>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Recent search jobs</h2>
+    {% if recent_jobs %}
+      <div class="table-wrap">
+      <table>
+        <caption class="sr-only">Recent search jobs</caption>
+        <thead><tr><th>Type</th><th>Status</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+        {% for job in recent_jobs %}
+          <tr>
+            <td>{{ job.job_type }}</td>
+            <td>{{ badge(job.status, job_status_css_class(job.status)) }}</td>
+            <td>{{ job.created_at }}</td>
+            <td>
+              {% if job.status in ("completed", "partial") and job.job_type == "search" %}
+                <a href="{{ url_for('search.results', search_id=job.result_reference) }}">View results</a>
+              {% else %}
+                <a href="{{ url_for('search.job_status', job_id=job.job_id) }}">View</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="data-unavailable">No searches run yet.</p>
+    {% endif %}
+    <a class="button" href="{{ url_for('search.new_search') }}">Run a new search</a>
+  </div>
+
+  <div class="card">
+    <h2>Saved searches</h2>
+    {% if saved_searches %}
+      <ul>
+      {% for saved_search in saved_searches[:6] %}
+        <li>
+          <a href="{{ url_for('saved_searches.detail', saved_search_id=saved_search.saved_search_id) }}">{{ saved_search.name }}</a>
+          {{ badge("enabled" if saved_search.enabled else "disabled", "badge-success" if saved_search.enabled else "badge-pending") }}
+        </li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p class="data-unavailable">No saved searches yet.</p>
+    {% endif %}
+    <a class="button secondary" href="{{ url_for('saved_searches.index') }}">All saved searches</a>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Unacknowledged monitoring events</h2>
+    {% if unacknowledged_events %}
+      <ul>
+      {% for event in unacknowledged_events %}
+        <li>{{ badge(event.severity, severity_css_class(event.severity)) }} {{ event.event_type }} — {{ event.explanation }}</li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p class="data-unavailable">Nothing unacknowledged.</p>
+    {% endif %}
+    <a class="button secondary" href="{{ url_for('monitoring.index') }}">View all events</a>
+  </div>
+
+  <div class="card">
+    <h2>Unread notifications</h2>
+    {% if unacknowledged_deliveries %}
+      <ul>
+      {% for delivery in unacknowledged_deliveries %}
+        <li>{{ badge(delivery.status.value if delivery.status.value is defined else delivery.status, delivery_status_css_class(delivery.status.value if delivery.status.value is defined else delivery.status)) }} delivery {{ delivery.delivery_id[:8] }}</li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p class="data-unavailable">Nothing pending.</p>
+    {% endif %}
+    <a class="button secondary" href="{{ url_for('notifications.index') }}">View notifications</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Top-ranked recent apartments</h2>
+  {% if top_apartments %}
+    <div class="grid grid-3">
+    {% for entry, apartment in top_apartments %}
+      <div class="apartment-card">
+        <strong>{{ apartment.title }}</strong>
+        <span>{{ apartment.current_price }} {{ apartment.currency or "" }} — rank {{ entry.rank }}</span>
+        <a href="{{ url_for('apartments.detail', apartment_id=apartment.id) }}">View</a>
+      </div>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p class="data-unavailable">Run a search to see ranked apartments here.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recently discovered platforms</h2>
+  {% if recent_candidates %}
+    <ul>
+    {% for candidate in recent_candidates %}
+      <li>{{ candidate.name }} ({{ candidate.normalized_domain }}) — {{ candidate.status.value if candidate.status.value is defined else candidate.status }}</li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="data-unavailable">No platform discovery run yet.</p>
+  {% endif %}
+  <a class="button secondary" href="{{ url_for('discovery.index') }}">Platform discovery</a>
+</div>
+{% endblock %}

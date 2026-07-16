@@ -763,6 +763,60 @@ except clauses (most-specific first) fixed it, caught by
 (1186 total: 1030 existing untouched + 156 new). Full write-up:
 [31_Notification_Delivery.md](31_Notification_Delivery.md).
 
+## Version 2.5 Step 16 — Web Dashboard and API (done 2026-07-16)
+
+A real, server-rendered local web application over every engine built
+through Step 15 — the first non-CLI interface to this platform.
+`src/web/` never contains business logic: every HTML route and every JSON
+API endpoint (`/api/v1/`) calls exactly one thing, `WebServiceFacade`, which
+in turn calls `RentalResearchAgent`/`MonitoringEngine`/`NotificationEngine`/
+`FeedbackEngine`/`AutomaticDiscoveryAgent`/`FilterRegistry`/storage read
+functions exactly as published — the same "reuse every heavy engine
+unchanged" discipline every prior sprint already established, applied one
+layer above monitoring/notifications instead of beside them.
+
+**Framework: Flask**, chosen from the actual codebase (fully synchronous
+`sqlite3`, plain dataclasses with zero `pydantic` usage in `src/`, every
+existing UI a synchronous `argparse` CLI) rather than a default preference —
+FastAPI's async/pydantic idiom would have fought the existing synchronous
+data layer. Server-rendered Jinja2 (bundled with Flask) + one hand-written
+CSS file + under 60 lines of vanilla JS (job-status polling and destructive-
+action confirmation only) — no heavy frontend framework.
+
+A local, thread-based `JobRunner` (`src/web/jobs/`) persists a `Job` row
+(`web_jobs`, migration `0011_web_dashboard.sql`) so a long-running search/
+monitoring-run/discovery-run survives a page refresh or server restart
+without Redis/Celery — every job status page polls itself via
+`/search/jobs/<id>` (`Accept: application/json`) until a terminal state,
+then redirects to results. Progress is deliberately coarse (two real states,
+never a fabricated smooth percentage) since `RentalResearchAgent.run()`
+exposes no progress callback.
+
+One small, additive, backward-compatible change outside `src/web/`:
+`core/agent.py::SearchRunResult` gained an optional `ranking_v2_results`
+field (default `None`) so the web layer can show a real `RankingEngineV2`
+explanation (score/confidence/top factors) without re-running the ranking
+engine a second time — every existing caller (every CLI invocation, every
+prior test) is unaffected, confirmed by a dedicated backward-compatibility
+test.
+
+New migration `0011_web_dashboard.sql` — 4 tables (`web_jobs`,
+`web_ui_preferences`, `web_saved_comparisons`, `web_recent_views`); only
+`web_jobs`/`web_ui_preferences` are current-state, the other two strictly
+append-only.
+
+The search form's dynamic filter section is generated entirely from
+`FilterRegistry.all()` (grouped by category, rendered by `value_type`) — no
+filter's validation logic is hand-copied into the web layer; a future 40th
+registered filter needs zero web-layer change. Security: session-based CSRF
+on every state-changing HTML request (API exempt, still localhost-only by
+default), standard hardening headers, path-traversal-safe id/file handling
+(reusing `notifications/channels/file_channel.py`'s own established
+defense), `http`/`https`-only URL validation, a 5 MiB request-size limit,
+and localhost-only binding requiring an explicit `WEB_ALLOW_NETWORK=1`
+opt-in to widen. 99 new tests (1285 total: 1186 existing untouched + 99
+new). Full write-up: [32_Web_Dashboard.md](32_Web_Dashboard.md).
+
 ## Beyond Version 2.0 (explicitly deferred)
 
 Renamed from "V2+" to avoid confusion with the new, formal "Version 2.0" above — this

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}{{ apartment.title }} — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>{{ apartment.title }}</h1>
+<p><a href="{{ apartment.url }}" target="_blank" rel="noopener noreferrer">Original listing &#8599;</a></p>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Overview</h2>
+    <table>
+      <tr><th scope="row">Price</th><td>{{ apartment.current_price }} {{ apartment.currency or "" }}</td></tr>
+      <tr><th scope="row">Status</th><td>{{ apartment.current_status }}</td></tr>
+      <tr><th scope="row">Property type</th><td>{{ apartment.property_type or "not available" }}</td></tr>
+      <tr><th scope="row">Bedrooms</th><td>{{ apartment.bedrooms if apartment.bedrooms is not none else "not available" }}</td></tr>
+      <tr><th scope="row">Bathrooms</th><td>{{ apartment.bathrooms if apartment.bathrooms is not none else "not available" }}</td></tr>
+      <tr><th scope="row">Area (sqft)</th><td>{{ apartment.sqft if apartment.sqft is not none else "not available" }}</td></tr>
+      <tr><th scope="row">Address</th><td>{{ apartment.address_raw or "not available" }}</td></tr>
+      <tr><th scope="row">Platform</th><td>{{ platform.name if platform else apartment.platform_id }}</td></tr>
+      <tr><th scope="row">First seen</th><td>{{ apartment.first_seen_at }}</td></tr>
+      <tr><th scope="row">Last seen</th><td>{{ apartment.last_seen_at }}</td></tr>
+    </table>
+    {% if missing_data %}<p class="data-unavailable">Missing data: {{ missing_data | join(", ") }}</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Ranking explanation</h2>
+    {% if ranking_v2 %}
+      <p>Score {{ ranking_v2.final_score | round(1) }} — confidence {{ (ranking_v2.confidence * 100) | round if ranking_v2.confidence is not none else "unavailable" }}%</p>
+      {% if ranking_v2.top_positive_factors %}<h3>Positive factors</h3><ul class="factor-list positive">{% for f in ranking_v2.top_positive_factors %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+      {% if ranking_v2.top_negative_factors %}<h3>Negative factors</h3><ul class="factor-list negative">{% for f in ranking_v2.top_negative_factors %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+    {% else %}
+      <p class="data-unavailable">Ranking explanation is only available when this apartment is viewed from a specific completed search's results.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Image gallery</h2>
+    {% if images %}
+      <div class="grid grid-3">
+      {% for image in images if image.is_current %}
+        <img src="{{ image.source_url }}" alt="Listing photo {{ loop.index }} of {{ apartment.title }}">
+      {% endfor %}
+      </div>
+    {% else %}
+      <p class="data-unavailable">No images recorded.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Price &amp; availability history</h2>
+    {% if price_history %}
+      <table>
+        <caption>Price history</caption>
+        <thead><tr><th>Observed at</th><th>Price</th></tr></thead>
+        <tbody>{% for entry in price_history %}<tr><td>{{ entry.observed_at }}</td><td>{{ entry.price }}</td></tr>{% endfor %}</tbody>
+      </table>
+    {% else %}
+      <p class="data-unavailable">No price history yet.</p>
+    {% endif %}
+    {% if availability_history %}
+      <table>
+        <caption>Availability history</caption>
+        <thead><tr><th>Observed at</th><th>Status</th></tr></thead>
+        <tbody>{% for entry in availability_history %}<tr><td>{{ entry.observed_at }}</td><td>{{ entry.status }}</td></tr>{% endfor %}</tbody>
+      </table>
+    {% else %}
+      <p class="data-unavailable">No availability history yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Geographic analysis</h2>
+    {% if geo_history %}
+      {% for entry in geo_history[:1] %}
+        <p>Computed via {{ entry.provider_id }} ({{ entry.calculation_method }}) — confidence {{ entry.confidence if entry.confidence is not none else "unavailable" }}</p>
+        <pre>{{ entry.summary }}</pre>
+      {% endfor %}
+    {% else %}
+      <p class="data-unavailable">No geographic analysis recorded for this apartment.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Change history</h2>
+    {% if change_log %}
+      <ul>{% for entry in change_log %}<li>{{ entry.observed_at }} — {{ entry.field_name }}: {{ entry.old_value }} &rarr; {{ entry.new_value }}</li>{% endfor %}</ul>
+    {% else %}
+      <p class="data-unavailable">No field changes recorded.</p>
+    {% endif %}
+    {% if image_events %}
+      <h3>Image changes</h3>
+      <ul>{% for event in image_events %}<li>{{ event.observed_at }} — {{ event.event }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Platform &amp; connector health</h2>
+  {% if connector_health %}
+    {% for health in connector_health %}
+      <p>{{ health.connector_name }}: {{ health.success_count }} succeeded / {{ health.failure_count }} failed (avg response {{ health.avg_response_time_ms }} ms)</p>
+    {% endfor %}
+  {% else %}
+    <p class="data-unavailable">No connector health observations yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Feedback</h2>
+  <form method="post" action="{{ url_for('feedback.record') }}">
+    {{ csrf_field() }}
+    <input type="hidden" name="apartment_id" value="{{ apartment.id }}">
+    {% if search_id %}<input type="hidden" name="search_id" value="{{ search_id }}">{% endif %}
+    <div class="checkbox-row">
+      <label for="event_type">Action</label>
+    </div>
+    <select id="event_type" name="event_type">
+      <option value="viewed">Viewed</option>
+      <option value="saved">Saved</option>
+      <option value="shortlisted">Shortlisted</option>
+      <option value="rejected">Rejected</option>
+      <option value="contacted">Contacted</option>
+      <option value="ranking_up">Rank up</option>
+      <option value="ranking_down">Rank down</option>
+      <option value="original_listing_opened">Original listing opened</option>
+    </select>
+    <button type="submit">Record</button>
+  </form>
+  {% if feedback_events %}
+    <p><small>{{ feedback_events | length }} feedback event(s) recorded for this apartment.</small></p>
+  {% endif %}
+</div>
+{% endblock %}

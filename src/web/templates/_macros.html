@@ -1,0 +1,15 @@
+{% macro csrf_field() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{% macro data_value(field) -%}
+{% if field.value is none %}
+<span class="data-unavailable">not available</span>
+{% else %}
+{{ field.value }}<span class="data-label"> ({{ field.label }})</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro badge(text, css_class) -%}
+<span class="badge {{ css_class }}">{{ text }}</span>
+{%- endmacro %}

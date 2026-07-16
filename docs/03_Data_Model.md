@@ -816,6 +816,71 @@ already established for monitoring.
 | `acknowledged_at` | TEXT (ISO 8601) | — |
 | `acknowledged_by` / `note` | TEXT, nullable | — |
 
+### `web_jobs` — new (v2.5 Step 16, live)
+
+One current-state row per background job the local `JobRunner` drives —
+`status`/`progress`/`current_stage`/`result_reference` genuinely change as
+the job runs, the same "current-state row" shape `monitoring_runs`/
+`platform_candidates` already use. `request_reference`/`result_reference`
+are foreign *identifiers* into existing tables (a `search_requests.id`, a
+`monitoring_runs.monitoring_run_id`, a `discovery_runs.run_id`) — never a
+copy of their content.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `job_id` | TEXT UNIQUE | — |
+| `job_type` | TEXT | `search` / `monitoring_run` / `discovery_run` |
+| `profile_id` | TEXT, nullable | — |
+| `request_reference` | TEXT, nullable | e.g. a `saved_search_id` for a monitoring-run job |
+| `status` | TEXT | `pending`/`running`/`completed`/`partial`/`failed`/`cancelled` |
+| `progress` | REAL | `0.0`-`1.0`, deliberately coarse — see docs/32 "Job Model" |
+| `current_stage` | TEXT, nullable | — |
+| `result_reference` | TEXT, nullable | a search_id / monitoring_run_id / discovery run_id |
+| `error_summary` | TEXT, nullable | — |
+| `warnings_json` | TEXT | `list[str]` |
+| `cancellation_requested` | INTEGER (bool) | — |
+| `metadata_json` | TEXT | includes the captured `ranking_v2` explanation snapshot for a search job |
+| `created_at` / `started_at` / `completed_at` | TEXT (ISO 8601), latter two nullable | — |
+
+### `web_ui_preferences` — new (v2.5 Step 16, live)
+
+Generic per-profile key/value UI settings with no home in any existing
+engine's own configuration — same "no schema churn for a new key" reasoning
+`knowledge_entries`/`apartment_analysis_metrics` already apply.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `profile_id` | TEXT | — |
+| `key` | TEXT | UNIQUE with `profile_id` |
+| `value_json` | TEXT | — |
+| `updated_at` | TEXT (ISO 8601) | — |
+
+### `web_saved_comparisons` — new (v2.5 Step 16, live)
+
+Just the apartment id list a user grouped for side-by-side comparison —
+never a copy of apartment data itself.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `comparison_id` | TEXT UNIQUE | — |
+| `profile_id` / `name` | TEXT, nullable | — |
+| `apartment_ids_json` | TEXT | `list[str]`, 2-5 entries |
+| `created_at` | TEXT (ISO 8601) | — |
+
+### `web_recent_views` — new (v2.5 Step 16, live)
+
+Append-only log feeding the dashboard's recently-viewed widget.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `profile_id` | TEXT, nullable | — |
+| `apartment_id` | TEXT FK → `apartments.id` | — |
+| `viewed_at` | TEXT (ISO 8601) | — |
+
 ### `knowledge_entries` (v1.1, live — unchanged)
 
 Curated reference data. `id`, `category`, `key`, `value_json`, `source`, `updated_at`.

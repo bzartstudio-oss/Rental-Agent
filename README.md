@@ -18,3 +18,21 @@ python -m venv .venv
 pip install -r requirements.txt
 cp .env.example .env
 ```
+
+## Usage
+
+CLI (the original interface — still fully supported, unchanged):
+
+```
+python -m src.ui.cli --location "Example City"
+```
+
+Web dashboard (v2.5 Step 16 — a local, single-user Flask app over the same
+platform; see [docs/32_Web_Dashboard.md](docs/32_Web_Dashboard.md)):
+
+```
+python -m flask --app "src.web.application:create_app" run
+```
+
+Then open `http://127.0.0.1:5000/` in a browser. Bound to localhost only by
+default — set `WEB_ALLOW_NETWORK=1` to expose it on the network.

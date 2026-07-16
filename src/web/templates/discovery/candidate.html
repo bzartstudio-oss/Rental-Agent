@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}{{ candidate.name }} — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>{{ candidate.name }}</h1>
+<p>{{ candidate.normalized_domain }} — status {{ candidate.status.value if candidate.status.value is defined else candidate.status }} — confidence {{ candidate.confidence if candidate.confidence is not none else "not available" }}</p>
+<p><a href="{{ candidate.raw_url }}" target="_blank" rel="noopener noreferrer">Visit site &#8599;</a></p>
+
+<div class="card">
+  <form method="post" action="{{ url_for('discovery.approve', candidate_id=candidate.candidate_id) }}" style="display:inline">
+    {{ csrf_field() }}
+    <div class="field"><label for="connector_name">Connector name (optional)</label><input type="text" id="connector_name" name="connector_name"></div>
+    <button type="submit">Approve</button>
+  </form>
+  <form method="post" action="{{ url_for('discovery.reject', candidate_id=candidate.candidate_id) }}" style="display:inline" data-confirm="Reject this candidate?">
+    {{ csrf_field() }}
+    <div class="field"><label for="reason">Reason (optional)</label><input type="text" id="reason" name="reason"></div>
+    <button type="submit" class="danger">Reject</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Evidence</h2>
+  {% if evidence %}
+    <ul>{% for item in evidence %}<li>[{{ item.collected_at }}] {{ item.evidence_type }} (via {{ item.discovery_provider }}): {{ item.value }}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="data-unavailable">No evidence collected yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Verification</h2>
+  {% if verification %}
+    <ul>{% for item in verification %}<li>{{ item.check_type }}: {{ item.result }}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="data-unavailable">No verification results yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Estimated capabilities</h2>
+  {% if capabilities %}
+    <ul>{% for item in capabilities %}<li>{{ item.capability_key }}: {{ item.estimated_value }} <small>(estimate)</small></li>{% endfor %}</ul>
+  {% else %}
+    <p class="data-unavailable">No capability estimates yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

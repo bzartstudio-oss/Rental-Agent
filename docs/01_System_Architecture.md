@@ -136,6 +136,36 @@ or blocks a monitoring run. Monitoring must work identically whether
 notifications are fully disabled, mid-outage, or never configured at all. See
 [31_Notification_Delivery.md](31_Notification_Delivery.md).
 
+## The v2.5 Web Dashboard & API Layer (Step 16)
+
+`src/web/` sits **above** every engine, never inside one — a route/API
+endpoint is a caller exactly like `ui/cli.py`, mediated through one
+`WebServiceFacade`:
+
+```
+HTML routes (routes/*.py)         JSON API (api/*.py, /api/v1/)
+        │                                  │
+        └────────────────┬─────────────────┘
+                          ▼
+                WebServiceFacade (facade.py)
+                          │
+   RentalResearchAgent, MonitoringEngine, NotificationEngine,
+   FeedbackEngine, AutomaticDiscoveryAgent, FilterRegistry,
+   storage/* read functions — every one reused exactly as published
+                          │
+                          ▼
+        JobRunner (background thread) ── Job (web_jobs, survives refresh)
+```
+
+`WebServiceFacade` never recomputes ranking, filtering, monitoring
+significance, or notification eligibility — it only calls the engine that
+already owns each decision and shapes the result for display. The one
+additive change anywhere outside `src/web/`: `core/agent.py::SearchRunResult`
+gained an optional `ranking_v2_results` field (default `None`, unchanged for
+every existing caller) so the web layer can show a real ranking explanation
+without re-running `RankingEngineV2` a second time. See
+[32_Web_Dashboard.md](32_Web_Dashboard.md).
+
 ## Module Responsibility Table
 
 | Module (package) | Responsibility | Must NOT contain | Doc |
@@ -165,6 +195,7 @@ notifications are fully disabled, mid-outage, or never configured at all. See
 | `discovery/automatic/` **(live, v2.5 Step 13)** | The Automatic Platform Discovery Agent — a provider-independent framework (2 self-registering sources: curated seed list, manual URLs) that discovers, deduplicates, classifies (deterministic keyword scoring), verifies, and estimates capabilities for candidate rental platforms, storing them append-only alongside the existing Platform Registry | Generating connector code; bypassing authentication/CAPTCHAs/robots restrictions/rate limits; automatically activating a discovered platform (only an approved connector/API integration does that) | [29_Automatic_Platform_Discovery.md](29_Automatic_Platform_Discovery.md) |
 | `monitoring/` **(live, v2.5 Step 14)** | The Continuous Monitoring & Saved Search Engine — versioned saved searches, a database-backed scheduling/claim interface, 5 self-registering event detectors comparing consecutive `RentalResearchAgent` runs, deterministic significance/dedup/removal-threshold logic, full+change-only HTML/JSON reports | Any single stage's business logic (reuses `RentalResearchAgent`/`FilterEngine`/`GeographicEngine`/`RankingEngineV2`/`FeedbackEngine`/`AutomaticDiscoveryAgent` unchanged); email/SMS/Slack/push delivery; a web dashboard; autonomous connector generation | [30_Continuous_Monitoring.md](30_Continuous_Monitoring.md) |
 | `notifications/` **(live, v2.5 Step 15)** | The Notification Delivery Engine — versioned notification preferences, deterministic/explainable eligibility, quiet-hours/rate-limiting, immediate-vs-digest routing, a self-registering channel plugin system (Console/File always-enabled, Email/Webhook disabled until configured) and template registry, idempotent retries with exponential backoff | Detecting/generating `MonitoringEvent`s itself (reuses `MonitoringEngine`/`monitoring.service` unchanged, read-only); a web dashboard; marketing/unsolicited messaging; SMS/mobile push; inferring preference merely from a delivery (only an explicit `feedback_integration.record_user_reaction()` call does that) | [31_Notification_Delivery.md](31_Notification_Delivery.md) |
+| `web/` **(live, v2.5 Step 16)** | A local Flask web dashboard + versioned JSON API (`/api/v1/`) — `WebServiceFacade` as the single call surface for every route, a local thread-based `JobRunner` for long-running searches/monitoring-runs/discovery-runs, CSRF/security-headers/path-traversal defenses, localhost-only binding by default | Any ranking/filtering/monitoring/notification/discovery/feedback business logic itself (every decision is reused from its owning engine); raw SQL in a route; a real task queue (Celery/Redis); a full multi-user identity system; a mobile app; an OS-level scheduler | [32_Web_Dashboard.md](32_Web_Dashboard.md) |
 
 ## The Independence Guardrail
 

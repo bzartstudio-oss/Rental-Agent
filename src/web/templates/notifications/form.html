@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}New Notification Preference — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>New Notification Preference</h1>
+<form method="post" action="{{ url_for('notifications.create_preference') }}">
+  {{ csrf_field() }}
+  {% if saved_search_id %}<input type="hidden" name="saved_search_id" value="{{ saved_search_id }}">{% endif %}
+
+  <div class="field">
+    <label>Enabled channels</label>
+    {% for channel in channels %}
+      <div class="checkbox-row">
+        <input type="checkbox" id="channel_{{ channel.channel_name }}" name="enabled_channels" value="{{ channel.channel_name }}" {% if not channel.requires_configuration %}checked{% endif %}>
+        <label for="channel_{{ channel.channel_name }}">{{ channel.display_name }}{% if channel.requires_configuration %} (requires configuration){% endif %}</label>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="grid grid-2">
+    <div class="field">
+      <label for="minimum_severity">Minimum severity</label>
+      <select id="minimum_severity" name="minimum_severity">
+        <option value="">Any</option>
+        <option value="info">Info</option>
+        <option value="warning">Warning</option>
+        <option value="critical">Critical</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="digest_frequency">Digest frequency</label>
+      <select id="digest_frequency" name="digest_frequency">
+        <option value="">Immediate only</option>
+        <option value="hourly">Hourly digest</option>
+        <option value="daily">Daily digest</option>
+        <option value="weekly">Weekly digest</option>
+      </select>
+    </div>
+    <div class="field"><label for="quiet_hours_start">Quiet hours start (HH:MM)</label><input type="time" id="quiet_hours_start" name="quiet_hours_start"></div>
+    <div class="field"><label for="quiet_hours_end">Quiet hours end (HH:MM)</label><input type="time" id="quiet_hours_end" name="quiet_hours_end"></div>
+    <div class="field"><label for="timezone_name">Timezone</label><input type="text" id="timezone_name" name="timezone_name" value="UTC"></div>
+    <div class="field"><label for="max_per_day">Max notifications per day</label><input type="number" id="max_per_day" name="max_per_day" min="1"></div>
+  </div>
+
+  <button type="submit">Create preference</button>
+</form>
+{% endblock %}

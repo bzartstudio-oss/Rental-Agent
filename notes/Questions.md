@@ -44,6 +44,22 @@ Open questions that need an answer from the user (or from research) before a dec
   minutes`, `default_worker_id`, a real production `MonitoringPolicy`) once this
   runs somewhere other than a manually-triggered CLI — a future worker service or
   scheduled deployment decision, not answered by this sprint. Blocks: [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md)
+- What real task queue (Celery, RQ, or a hosted equivalent) should replace
+  `JobRunner`'s `threading.Thread` once this runs somewhere other than one
+  local process — the seam is isolated (see docs/32 "Future Task-Queue
+  Migration") but which queue/broker is a deployment decision this sprint
+  didn't need to make. Blocks: [../docs/32_Web_Dashboard.md](../docs/32_Web_Dashboard.md)
+- What should the real multi-user authentication mechanism be (sessions +
+  password, OAuth/SSO, a hosted identity provider) once this platform serves
+  more than one local user — every facade call already threads a
+  `profile_id`, but which auth mechanism populates it instead of
+  `DEFAULT_PROFILE_ID` is a genuine future decision, not answered by this
+  sprint. Blocks: [../docs/32_Web_Dashboard.md](../docs/32_Web_Dashboard.md)
+- Should the comparison page eventually compute "true monthly cost"
+  (utilities/fees-inclusive) and a "user-preference match" score? Neither is
+  computed by any engine in this codebase today — showing either would have
+  meant fabricating a number, so the comparison page currently omits both
+  columns from the mission's own wishlist. Blocks: [../docs/32_Web_Dashboard.md](../docs/32_Web_Dashboard.md)
 
 ## Answered
 
@@ -52,9 +68,15 @@ Open questions that need an answer from the user (or from research) before a dec
   **Console + File (zero credentials) and Email + Webhook (configurable): v2.5
   Step 15** (2026-07-16) — a full `NotificationEngine` with versioned per-profile/
   per-saved-search preferences, deterministic eligibility, quiet hours, rate
-  limiting, immediate-vs-digest routing, and idempotent retries. SMS/mobile push/
-  a web dashboard remain open — see above. See
+  limiting, immediate-vs-digest routing, and idempotent retries. SMS/mobile push
+  remain open — see above. A web dashboard was answered separately: v2.5 Step 16
+  (2026-07-16), see below. See
   [../docs/31_Notification_Delivery.md](../docs/31_Notification_Delivery.md).
+- ~~Should a real web dashboard be built, and with what framework?~~ **Yes —
+  Flask, a local server-rendered app + versioned JSON API: v2.5 Step 16**
+  (2026-07-16). Framework chosen by inspecting the actual codebase (fully
+  synchronous, zero `pydantic` usage in `src/`) rather than a default
+  preference. See [../docs/32_Web_Dashboard.md](../docs/32_Web_Dashboard.md).
 - ~~When should continuous monitoring (periodic re-discovery) and notifications be
   scheduled?~~ **Continuous monitoring itself: v2.5 Step 14** (2026-07-16) — a
   database-backed scheduling/claim interface (`due_saved_searches()`/

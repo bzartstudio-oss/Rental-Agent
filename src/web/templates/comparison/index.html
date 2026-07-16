@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Compare apartments — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Compare apartments</h1>
+<div class="table-wrap">
+<table>
+  <caption class="sr-only">Apartment comparison</caption>
+  <thead>
+    <tr>
+      <th scope="col">Attribute</th>
+      {% for item in apartments %}<th scope="col">{{ item.apartment.title }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    <tr><th scope="row">Price</th>{% for item in apartments %}<td>{{ item.apartment.current_price }} {{ item.apartment.currency or "" }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Availability</th>{% for item in apartments %}<td>{{ item.apartment.current_status }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Bedrooms / Bathrooms</th>{% for item in apartments %}<td>{{ item.apartment.bedrooms if item.apartment.bedrooms is not none else "n/a" }} / {{ item.apartment.bathrooms if item.apartment.bathrooms is not none else "n/a" }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Area (sqft)</th>{% for item in apartments %}<td>{{ item.apartment.sqft if item.apartment.sqft is not none else "not available" }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Property type</th>{% for item in apartments %}<td>{{ item.apartment.property_type or "not available" }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Platform</th>{% for item in apartments %}<td>{{ item.platform.name if item.platform else item.apartment.platform_id }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Platform reliability</th>{% for item in apartments %}<td>{{ ((item.platform.reliability_score * 100) | round ~ "%") if item.platform and item.platform.reliability_score is not none else "not available" }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Geographic analysis</th>{% for item in apartments %}<td>{% if item.geo_history %}{{ item.geo_history[0].summary }}{% else %}not available{% endif %}</td>{% endfor %}</tr>
+    <tr><th scope="row">Analysis score</th>{% for item in apartments %}<td>{{ item.analysis.composite_scores if item.analysis else "not available" }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Listing freshness (last seen)</th>{% for item in apartments %}<td>{{ item.apartment.last_seen_at }}</td>{% endfor %}</tr>
+    <tr><th scope="row">Original listing</th>{% for item in apartments %}<td><a href="{{ item.apartment.url }}" target="_blank" rel="noopener noreferrer">Open &#8599;</a></td>{% endfor %}</tr>
+  </tbody>
+</table>
+</div>
+<p><small>"Not available" means this platform/listing never reported that data — it is never estimated on this page.</small></p>
+{% endblock %}

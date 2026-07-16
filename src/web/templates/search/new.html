@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}New Search — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>New Search</h1>
+<form method="post" action="{{ url_for('search.submit_search') }}">
+  {{ csrf_field() }}
+
+  <fieldset>
+    <legend>Location</legend>
+    <div class="grid grid-2">
+      <div class="field"><label for="country">Country</label><input type="text" id="country" name="country"></div>
+      <div class="field"><label for="region">Region</label><input type="text" id="region" name="region"></div>
+      <div class="field"><label for="city">City</label><input type="text" id="city" name="city"></div>
+      <div class="field"><label for="postal_area">Postal area</label><input type="text" id="postal_area" name="postal_area"></div>
+      <div class="field"><label for="location">Or free-text location</label><input type="text" id="location" name="location" placeholder="e.g. Valencia, Spain"></div>
+    </div>
+  </fieldset>
+
+  {% for category, filters in filter_categories.items() %}
+  <fieldset>
+    <legend>{{ category | capitalize }}</legend>
+    <p><small>Applied through the Dynamic Filter Engine — leave blank to skip a criterion.</small></p>
+    <div class="grid grid-3">
+      {% for meta in filters %}
+      <div class="field">
+        <label for="filter__{{ meta.key }}">{{ meta.display_name }}{% if meta.is_dormant %} <small>(no data source yet)</small>{% endif %}</label>
+        {% if meta.value_type == "boolean" %}
+          <div class="checkbox-row">
+            <input type="checkbox" id="filter__{{ meta.key }}" name="filter__{{ meta.key }}">
+            <span>{{ meta.description }}</span>
+          </div>
+        {% elif meta.value_type == "number" %}
+          <input type="number" step="any" min="0" id="filter__{{ meta.key }}" name="filter__{{ meta.key }}">
+        {% else %}
+          <input type="text" id="filter__{{ meta.key }}" name="filter__{{ meta.key }}">
+        {% endif %}
+        <small>{{ meta.description }}</small>
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endfor %}
+
+  <fieldset>
+    <legend>Output</legend>
+    <div class="grid grid-2">
+      <div class="field">
+        <label for="max_result_count">Maximum result count</label>
+        <input type="number" id="max_result_count" name="max_result_count" min="1" max="200" value="50">
+      </div>
+      <div class="field">
+        <label for="feedback_mode">Feedback mode</label>
+        <select id="feedback_mode" name="feedback_mode">
+          <option value="">Off</option>
+          <option value="explicit_only">Explicit only</option>
+          <option value="suggested" selected>Suggested (computed, not applied)</option>
+          <option value="assisted">Assisted (applies learned preferences)</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Enabled platforms</label>
+      {% for platform in platforms %}
+        <div class="checkbox-row">
+          <input type="checkbox" id="platform__{{ platform.id }}" name="enabled_platforms" value="{{ platform.id }}" checked>
+          <label for="platform__{{ platform.id }}">{{ platform.name }}</label>
+        </div>
+      {% else %}
+        <p class="data-unavailable">No connector-available platforms registered yet.</p>
+      {% endfor %}
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="use_geo_engine" name="use_geo_engine" checked>
+      <label for="use_geo_engine">Enrich with geographic analysis (distance/travel time/nearby services)</label>
+    </div>
+    <div class="field">
+      <label for="label">Search label (optional)</label>
+      <input type="text" id="label" name="label">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="save_search" name="save_search">
+      <label for="save_search">Save this search</label>
+    </div>
+    <div class="field">
+      <label for="saved_search_name">Saved search name (required if saving)</label>
+      <input type="text" id="saved_search_name" name="saved_search_name">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="enable_monitoring" name="enable_monitoring" checked>
+      <label for="enable_monitoring">Enable monitoring for the saved search</label>
+    </div>
+  </fieldset>
+
+  <button type="submit">Run search</button>
+</form>
+{% endblock %}

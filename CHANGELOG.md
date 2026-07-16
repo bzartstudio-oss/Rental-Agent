@@ -4,6 +4,74 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.8] — 2026-07-16 — Web Dashboard and API
+
+The first non-CLI interface: a local, server-rendered Flask web application
+and a versioned JSON API (`/api/v1/`) over every engine through Step 15.
+`src/web/` contains no business logic — every route calls one
+`WebServiceFacade`, which calls the exact same engines the CLI already uses.
+
+### Added
+- `src/web/` — `WebApplication` (`create_app()` factory), `WebConfiguration`
+  (host/port/debug/secret key, localhost-only by default), `WebDependencies`
+  (constructs every engine instance once per process), `WebServiceFacade`
+  (the single call surface every route/API endpoint uses), `WebErrorHandler`
+  (consistent HTML/JSON errors, no raw tracebacks), `WebSecurity` (CSRF,
+  security headers, path-traversal-safe `safe_join()`, `is_safe_url()`),
+  `WebHealth`/`WebStatistics` (dashboard/health aggregation).
+- `src/web/jobs/` — `Job`/`JobRunner`: a local, thread-based background job
+  runner (no Redis/Celery) with a persisted `web_jobs` row surviving a page
+  refresh or server restart; statuses `pending`/`running`/`completed`/
+  `partial`/`failed`/`cancelled`.
+- `src/web/forms/` — request validation (path traversal, negative prices,
+  impossible ranges, unsafe URLs, excessive limits, unknown enum values) for
+  search/saved-search/feedback/discovery/notification forms; the dynamic
+  filter section is generated entirely from `FilterRegistry.all()`.
+- `src/web/presenters/` — `to_jsonable()` (one dataclass/enum/datetime → JSON
+  converter used across the whole API), apartment-card/detail presentation
+  with honest confirmed/estimated/inferred/unavailable labeling.
+- `src/web/routes/` + `templates/` — dashboard, new-search workflow + job
+  progress + results, apartment detail, 2-5 apartment comparison, saved
+  searches (create/version/enable/disable/run-now/compare-runs), monitoring
+  (event list/acknowledge, manual run trigger, no OS scheduler), notifications
+  (preferences/channel status/deliveries/digests/retries), discovery (manual
+  run/candidate review/approve/reject), feedback (record/profile/explain/
+  undo/reset), system health.
+- `src/web/api/` — `/api/v1/` JSON endpoints for searches/search-jobs,
+  apartments, saved searches, monitoring events, notifications, feedback, the
+  learned preference profile, discovery runs/candidates, platforms, health —
+  the same facade, structured JSON errors.
+- Migration `0011_web_dashboard.sql` — 4 tables: `web_jobs`,
+  `web_ui_preferences`, `web_saved_comparisons`, `web_recent_views`.
+- One additive field on `core/agent.py::SearchRunResult`
+  (`ranking_v2_results: list[RankedApartmentV2] | None = None`) so the web
+  layer can show a real ranking explanation without re-running
+  `RankingEngineV2` a second time — every existing caller unaffected.
+- 99 new tests (1285 total).
+
+### Security
+- Session-based CSRF on every state-changing HTML request (API exempt, still
+  localhost-only by default); standard hardening headers
+  (`X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/
+  `Content-Security-Policy`/`Permissions-Policy`); path-traversal-safe id and
+  file-path handling; `http`/`https`-only URL validation; a 5 MiB
+  request-size limit; localhost-only binding by default, requiring an
+  explicit `WEB_ALLOW_NETWORK=1` to widen.
+
+### Explicitly not duplicated
+- No ranking/filtering/monitoring-significance/notification-eligibility
+  logic lives in `src/web/` — every decision is reused from the engine that
+  already owns it.
+- No SQL in any route — all data access goes through `WebServiceFacade` (and,
+  beneath it, existing repository functions or the small `web_repository.py`
+  added for this sprint's own 4 tables).
+
+### Explicitly not built
+- No mobile application, no multi-tenant billing, no autonomous connector
+  generation, no real task queue (Celery/Redis — the `JobRunner` seam is
+  ready for one), no full multi-user identity system, no OS-level scheduler
+  inside the web server, no replacement of the existing CLI.
+
 ## [2.5.7] — 2026-07-16 — Notification Delivery Engine
 
 Monitoring detects change and creates events; this sprint separately decides

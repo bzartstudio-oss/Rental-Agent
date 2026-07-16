@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge %}
+{% block title %}Saved Searches — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Saved Searches</h1>
+<p><a class="button" href="{{ url_for('saved_searches.new') }}">Create saved search</a></p>
+{% if saved_searches %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Status</th><th>Version</th><th>Updated</th><th></th></tr></thead>
+  <tbody>
+  {% for saved_search in saved_searches %}
+    <tr>
+      <td>{{ saved_search.name }}</td>
+      <td>{{ badge("monitoring on" if saved_search.enabled else "monitoring off", "badge-success" if saved_search.enabled else "badge-pending") }}</td>
+      <td>{{ saved_search.current_version }}</td>
+      <td>{{ saved_search.updated_at }}</td>
+      <td><a href="{{ url_for('saved_searches.detail', saved_search_id=saved_search.saved_search_id) }}">View</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="data-unavailable">No saved searches yet.</p>
+{% endif %}
+{% endblock %}

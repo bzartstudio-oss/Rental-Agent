@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, badge %}
+{% block title %}Delivery {{ delivery.delivery_id[:8] }} — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Notification delivery {{ delivery.delivery_id[:8] }}</h1>
+<p>{{ badge(delivery.status.value if delivery.status.value is defined else delivery.status, delivery_status_css_class(delivery.status.value if delivery.status.value is defined else delivery.status)) }}
+   — channels: {{ delivery.channels | join(", ") }} — attempts: {{ delivery.attempt_count }}</p>
+
+<div class="card">
+  <form method="post" action="{{ url_for('notifications.retry_delivery', delivery_id=delivery.delivery_id) }}" style="display:inline">{{ csrf_field() }}<button type="submit">Retry now</button></form>
+  <form method="post" action="{{ url_for('notifications.cancel_delivery', delivery_id=delivery.delivery_id) }}" style="display:inline" data-confirm="Cancel this delivery?">{{ csrf_field() }}<button type="submit" class="danger">Cancel</button></form>
+  <form method="post" action="{{ url_for('notifications.acknowledge_delivery', delivery_id=delivery.delivery_id) }}" style="display:inline">{{ csrf_field() }}<button type="submit" class="secondary">Acknowledge</button></form>
+</div>
+
+<div class="card">
+  <h2>Attempts</h2>
+  {% if attempts %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Channel</th><th>#</th><th>Status</th><th>Error</th><th>At</th></tr></thead>
+      <tbody>
+      {% for attempt in attempts %}
+        <tr><td>{{ attempt.channel }}</td><td>{{ attempt.attempt_number }}</td><td>{{ attempt.status }}</td><td>{{ attempt.error or "" }}</td><td>{{ attempt.attempted_at }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <p class="data-unavailable">No attempts recorded yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Messages</h2>
+  {% for message in messages %}
+    <p><strong>{{ message.channel }}</strong> — {{ message.subject or "" }}</p>
+    <pre>{{ message.body_text }}</pre>
+  {% else %}
+    <p class="data-unavailable">No message rendered yet.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Acknowledgements</h2>
+  {% if acknowledgements %}
+    <ul>{% for ack in acknowledgements %}<li>{{ ack.acknowledged_at }} by {{ ack.acknowledged_by or "unknown" }}{% if ack.note %} — {{ ack.note }}{% endif %}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="data-unavailable">Not acknowledged.</p>
+  {% endif %}
+</div>
+{% endblock %}

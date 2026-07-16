@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge %}
+{% block title %}System Health — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>System Health</h1>
+
+<div class="grid grid-3">
+  <div class="card">
+    <h2>Database</h2>
+    <p>{{ badge("ok" if health.database_ok else "error", health_badge(health.database_ok)) }} — {{ health.migration_count }} migration(s) applied</p>
+    <p>{{ statistics.database_size_bytes / 1024 / 1024 | round(2) }} MB</p>
+  </div>
+  <div class="card">
+    <h2>Counts</h2>
+    <p>{{ statistics.apartment_count }} apartments &middot; {{ statistics.search_count }} searches</p>
+    <p>{{ statistics.monitoring_event_count }} monitoring events &middot; {{ statistics.discovery_candidate_count }} discovery candidates</p>
+  </div>
+  <div class="card">
+    <h2>Job queue</h2>
+    {% if active_jobs %}
+      <ul>{% for job in active_jobs[:5] %}<li>{{ job.job_type }} — {{ job.status }}</li>{% endfor %}</ul>
+    {% else %}
+      <p class="data-unavailable">No recent jobs.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent failures</h2>
+  {% if health.recent_failures %}
+    <ul>{% for failure in health.recent_failures %}<li role="alert">{{ failure }}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="data-unavailable">None detected.</p>
+  {% endif %}
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Connector health</h2>
+    {% if health.connector_health %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Platform</th><th>Success</th><th>Failure</th></tr></thead>
+        <tbody>{% for c in health.connector_health %}<tr><td>{{ c.platform_id }}</td><td>{{ c.success_count }}</td><td>{{ c.failure_count }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    {% else %}<p class="data-unavailable">No observations yet.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Provider health</h2>
+    {% if health.provider_health %}
+      <ul>{% for p in health.provider_health %}<li>{{ p.provider_id }}: {{ badge("available" if p.is_available_now else "unavailable", health_badge(p.is_available_now)) }}</li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">No providers registered.</p>{% endif %}
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Notification channel health</h2>
+    {% if health.notification_channel_health %}
+      <ul>{% for c in health.notification_channel_health %}<li>{{ c.channel }}: {{ badge("healthy" if c.is_healthy else "unhealthy", health_badge(c.is_healthy)) }} ({{ c.recent_success_count }} ok / {{ c.recent_failure_count }} failed)</li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">No channels observed yet.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Monitoring health</h2>
+    {% if health.monitoring_health %}
+      <ul>{% for m in health.monitoring_health %}<li>{{ m.saved_search_id }}: {{ badge("healthy" if m.is_healthy else "unhealthy", health_badge(m.is_healthy)) }}</li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">No saved searches yet.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

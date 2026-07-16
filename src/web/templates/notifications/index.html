@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field, badge %}
+{% block title %}Notifications — Rental Intelligence Platform{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+
+<div class="card">
+  <h2>Channel configuration status</h2>
+  <p><small>Credentials are never rendered here — only whether a channel is configured.</small></p>
+  <ul>
+  {% for channel in channels %}
+    <li>{{ channel.display_name }}: {{ badge("requires configuration" if channel.requires_configuration else "ready", "badge-warning" if channel.requires_configuration else "badge-success") }}</li>
+  {% endfor %}
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Preferences</h2>
+  <p><a class="button" href="{{ url_for('notifications.new_preference') }}">Create preference</a></p>
+  {% if preferences %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Preference</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for preference in preferences %}
+        <tr>
+          <td>{{ preference.preference_id[:8] }}</td>
+          <td>{{ badge("enabled" if preference.enabled else "disabled", "badge-success" if preference.enabled else "badge-pending") }}</td>
+          <td>
+            {% if preference.enabled %}
+              <form method="post" action="{{ url_for('notifications.disable', preference_id=preference.preference_id) }}" style="display:inline">{{ csrf_field() }}<button type="submit" class="secondary">Disable</button></form>
+            {% else %}
+              <form method="post" action="{{ url_for('notifications.enable', preference_id=preference.preference_id) }}" style="display:inline">{{ csrf_field() }}<button type="submit" class="secondary">Enable</button></form>
+            {% endif %}
+            <a href="{{ url_for('notifications.preview_form', preference_id=preference.preference_id) }}">Preview</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <p class="data-unavailable">No notification preferences yet.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('notifications.deliver_pending') }}">
+    {{ csrf_field() }}
+    <button type="submit" class="secondary">Deliver pending notifications now</button>
+  </form>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Pending</h2>
+    {% if pending %}
+      <ul>{% for delivery in pending %}<li><a href="{{ url_for('notifications.delivery_detail', delivery_id=delivery.delivery_id) }}">{{ delivery.delivery_id[:8] }}</a></li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">None pending.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Failed</h2>
+    {% if failed %}
+      <ul>{% for delivery in failed %}<li><a href="{{ url_for('notifications.delivery_detail', delivery_id=delivery.delivery_id) }}">{{ delivery.delivery_id[:8] }}</a></li>{% endfor %}</ul>
+    {% else %}<p class="data-unavailable">None failed.</p>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent delivery history</h2>
+  {% if delivered %}
+    <ul>
+    {% for delivery in delivered %}
+      <li>
+        <a href="{{ url_for('notifications.delivery_detail', delivery_id=delivery.delivery_id) }}">{{ delivery.delivery_id[:8] }}</a>
+        {{ badge(delivery.status.value if delivery.status.value is defined else delivery.status, delivery_status_css_class(delivery.status.value if delivery.status.value is defined else delivery.status)) }}
+      </li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <p class="data-unavailable">No delivery history yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

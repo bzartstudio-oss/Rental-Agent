@@ -11,3 +11,4 @@ data/raw_pages/*
 !data/raw_pages/.gitkeep
 data/cache/*
 !data/cache/.gitkeep
+data/.web_secret_key

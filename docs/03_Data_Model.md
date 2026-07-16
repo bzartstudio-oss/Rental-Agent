@@ -469,6 +469,147 @@ statistics()` aggregates this table for provider effectiveness/runtime/failure r
 | `error` | TEXT, nullable | Set only when `succeeded` is false |
 | `observed_at` | TEXT (ISO 8601) | — |
 
+### `saved_searches` — new (v2.5 Step 14, live)
+
+One *current-state* row per saved search — mutable, like `platforms`, but the
+actual search definition never changes in place; see `saved_search_versions`
+below. `update_saved_search_metadata()` refreshes `name`/`description`/
+`current_version`/`enabled`/`updated_at` only.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `saved_search_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `profile_id` | TEXT, nullable | Feedback profile this saved search is associated with, if any |
+| `name` / `description` | TEXT | — |
+| `current_version` | INTEGER | Points at the `saved_search_versions` row in effect |
+| `enabled` | INTEGER (bool) | Disabled saved searches are excluded from `due_saved_searches()` |
+| `created_at` / `updated_at` | TEXT (ISO 8601) | `created_at` never changes after insert |
+
+### `saved_search_versions` — new (v2.5 Step 14, live)
+
+Append-only: "Never overwrite a saved search definition. Every modification
+creates a new SavedSearchVersion" (the mission's own words) — one immutable
+row per edit, `UNIQUE (saved_search_id, version)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `saved_search_id` | TEXT FK → `saved_searches.saved_search_id` | — |
+| `version` | INTEGER | 1, 2, 3, ... per saved search |
+| `request_json` | TEXT (JSON) | `{"location": ..., "criteria": {...}}` — exactly `SearchRequest.to_criteria_json()`'s own shape |
+| `active_filters_json` | TEXT (JSON) | `FilterConfiguration`'s own fields (`enabled_filter_keys`, `strict_validation`) — not criteria values, which live in `request_json` |
+| `ranking_profile_json` | TEXT (JSON), nullable | `{"name", "description", "weights": {...}}` |
+| `feedback_mode` | TEXT, nullable | One of `FeedbackMode`'s values |
+| `selected_platforms_json` / `selected_connectors_json` | TEXT (JSON) | Allowlists — empty means "every connector-available platform" |
+| `geographic_destinations_json` | TEXT (JSON) | e.g. `[{"country": "Spain", "region": "Valencia", "city": "Valencia"}]` — used only when `discovery_refresh_before_monitoring` is set |
+| `monitoring_policy_json` | TEXT (JSON) | The full `MonitoringPolicy.as_dict()` |
+| `report_options_json` / `retention_policy_json` / `tags_json` / `metadata_json` | TEXT (JSON) | — |
+| `created_at` | TEXT (ISO 8601) | — |
+
+### `monitoring_schedules` — new (v2.5 Step 14, live)
+
+One current-state row per saved search — doubles as the "when is this due"
+bookkeeping and the run-claim lock. `claim_due_run()` is the one atomic
+conditional `UPDATE`; `release_run_claim()` and `update_schedule()` are the
+other two mutation functions for this table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `saved_search_id` | TEXT, `UNIQUE`, FK → `saved_searches.saved_search_id` | — |
+| `next_run_at` | TEXT (ISO 8601), nullable | `NULL` means manual-only (no scheduling policy field set) |
+| `last_run_at` / `last_run_status` | TEXT, nullable | — |
+| `claimed_by` | TEXT, nullable | Worker id currently holding the claim |
+| `claimed_at` / `claim_expires_at` | TEXT (ISO 8601), nullable | An expired claim (`claim_expires_at < now`) can be re-claimed by anyone |
+
+### `monitoring_runs` — new (v2.5 Step 14, live)
+
+One append-only header row per `MonitoringEngine._execute()` call. The one
+documented mutation after insert: `update_run_status()` fills in `status`/
+`search_id`/`completed_at`/the two outcome lists/`event_count`/`notes` once
+the pipeline finishes.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `monitoring_run_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `saved_search_id` | TEXT FK → `saved_searches.saved_search_id` | — |
+| `saved_search_version` | INTEGER | Which immutable version this run executed |
+| `search_id` | TEXT, nullable, FK → `search_requests.id` | `NULL` only if the run failed before `RentalResearchAgent.run()` was even called |
+| `status` | TEXT | One of `MonitoringRunStatus`'s 4 values (`running`/`completed`/`partial`/`failed`) |
+| `started_at` / `completed_at` | TEXT (ISO 8601), `completed_at` nullable | — |
+| `platforms_attempted_json` / `platforms_succeeded_json` / `platforms_failed_json` | TEXT (JSON) | From `search_memory_service.get_search_execution()` |
+| `event_count` | INTEGER | Total `monitoring_events` rows this run produced, including lifecycle events |
+| `notes` | TEXT, nullable | e.g. a `max_provider_failures` policy breach |
+
+### `monitoring_events` — new (v2.5 Step 14, live)
+
+Append-only — "Never overwrite events" (the mission's own words) — except
+`acknowledged`, the one current-state flag this row ever has updated
+(`acknowledge_event()`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `event_id` | TEXT, `UNIQUE`, `NOT NULL` | A real UUID |
+| `monitoring_run_id` | TEXT FK → `monitoring_runs.monitoring_run_id` | — |
+| `saved_search_id` | TEXT FK → `saved_searches.saved_search_id` | — |
+| `saved_search_version` | INTEGER | — |
+| `search_id` | TEXT, nullable, FK → `search_requests.id` | — |
+| `apartment_id` | TEXT, nullable, FK → `apartments.id` | — |
+| `platform_id` | TEXT, nullable, FK → `platforms.id` | — |
+| `connector_id` | TEXT, nullable | No dedicated connectors table exists (`ConnectorRegistry` is in-memory only), so this is a plain string, not an FK |
+| `event_type` | TEXT | One of `MonitoringEventType`'s 26 named values (open-ended, not an enforced enum) |
+| `severity` | TEXT | `"info"` / `"warning"` / `"critical"` |
+| `significance` | REAL | `[0, 1]`, deterministic — see docs/30 "Change Significance" |
+| `old_value_json` / `new_value_json` | TEXT (JSON), nullable | — |
+| `explanation` | TEXT | — |
+| `evidence_json` | TEXT (JSON) | — |
+| `detected_at` | TEXT (ISO 8601) | — |
+| `dedup_key` | TEXT | `"{saved_search_id}:{subject_id}:{event_type}"` |
+| `acknowledged` | INTEGER (bool) | Default `0` |
+| `notification_eligible` | INTEGER (bool) | Default `1` — delivery itself is out of scope this sprint |
+| `metadata_json` | TEXT (JSON) | — |
+
+### `event_acknowledgements` — new (v2.5 Step 14, live)
+
+Append-only audit trail of *who*/*when* acknowledged an event, kept separate
+from `monitoring_events.acknowledged` (the cheap current-state lookup) so both
+a fast check and a full history exist.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `event_id` | TEXT FK → `monitoring_events.event_id` | — |
+| `acknowledged_at` | TEXT (ISO 8601) | — |
+| `acknowledged_by` / `note` | TEXT, nullable | — |
+
+### `monitoring_statistics` — new (v2.5 Step 14, live)
+
+Append-only, one row per run summarizing its own computed aggregates — this
+sprint's whole "Knowledge Engine Integration" answer for monitoring-specific
+metrics (see docs/30).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `monitoring_run_id` | TEXT FK → `monitoring_runs.monitoring_run_id` | — |
+| `computed_at` | TEXT (ISO 8601) | — |
+| `statistics_json` | TEXT (JSON) | `MonitoringStatistics.as_dict()` — event counts by type, suppressed-duplicate count, platform success/failure counts, average significance |
+
+### `report_artifacts` — new (v2.5 Step 14, live)
+
+Append-only, one row per generated report file.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | — |
+| `monitoring_run_id` | TEXT FK → `monitoring_runs.monitoring_run_id` | — |
+| `report_type` | TEXT | One of `full_html` / `full_json` / `changes_html` / `changes_json` |
+| `path` | TEXT | — |
+| `generated_at` | TEXT (ISO 8601) | — |
+
 ### `knowledge_entries` (v1.1, live — unchanged)
 
 Curated reference data. `id`, `category`, `key`, `value_json`, `source`, `updated_at`.
@@ -503,6 +644,14 @@ discovery_runs 1──* platform_candidates *──1 platforms (matched_platform
    │                        │ 1──* platform_duplicate_links (self-referential: candidate_id / duplicate_of_candidate_id)
    │
    1──* discovery_provider_observations   (NEW, v2.5 Step 13)
+
+saved_searches 1──* saved_search_versions
+   │                1──* monitoring_schedules (1:1, saved_search_id UNIQUE)   (NEW, v2.5 Step 14)
+   1──* monitoring_runs *──1 search_requests (search_id, nullable)
+          │           1──* monitoring_events *──1 apartments/platforms (nullable)
+          │                       │ 1──* event_acknowledgements
+          │           1──* monitoring_statistics
+          │           1──* report_artifacts
 ```
 
 ## Storage Format Outside SQLite

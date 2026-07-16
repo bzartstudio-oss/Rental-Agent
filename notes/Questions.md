@@ -20,11 +20,31 @@ Open questions that need an answer from the user (or from research) before a dec
   `discovery-cli approve-candidate` currently lets any operator promote a candidate
   into the registry with `connector_available=False`, which is honest but doesn't
   yet enforce any approval workflow beyond "a human ran the command." Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
-- When should continuous monitoring (periodic re-discovery) and notifications
-  (alerting on newly-supported platforms/locations) be scheduled — both explicitly
-  out of scope for v2.5 Step 13 per the mission's own instructions? Blocks: [../docs/29_Automatic_Platform_Discovery.md](../docs/29_Automatic_Platform_Discovery.md)
+- Which delivery channel(s) — email, SMS, Slack, push — should be built first for
+  Continuous Monitoring's `MonitoringEvent`s, and with what per-user delivery
+  preferences? Explicitly out of scope for v2.5 Step 14; the event model
+  (`notification_eligible`, `monitoring-cli list-events`/`export-events`) is
+  already a complete, standalone consumer surface a delivery layer would read from
+  without any change to how events are generated. Blocks: [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md)
+- Does `SavedSearchVersion.geographic_destinations` need a richer structured shape
+  than "a list of `{country, region, city}` dicts"? Only the first entry is used
+  today (`_refresh_discovery()` reads `geographic_destinations[0]`) — fine for a
+  saved search monitoring one metro area, but multi-destination saved searches
+  would need every entry actually consulted. Blocks: [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md)
+- What should `MonitoringConfiguration`'s production defaults be (`default_claim_ttl_
+  minutes`, `default_worker_id`, a real production `MonitoringPolicy`) once this
+  runs somewhere other than a manually-triggered CLI — a future worker service or
+  scheduled deployment decision, not answered by this sprint. Blocks: [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md)
 
 ## Answered
+
+- ~~When should continuous monitoring (periodic re-discovery) and notifications be
+  scheduled?~~ **Continuous monitoring itself: v2.5 Step 14** (2026-07-16) — a
+  database-backed scheduling/claim interface (`due_saved_searches()`/
+  `claim_due_run()`/`mark_run_*()`) that any of cron, Windows Task Scheduler, a
+  future worker service, or manual CLI execution can drive; notification
+  *delivery* (email/SMS/Slack/push) remains open, see above. See
+  [../docs/30_Continuous_Monitoring.md](../docs/30_Continuous_Monitoring.md).
 
 - ~~Which platform/data source should the first connector target?~~ **RentCast**
   (2026-07-15) — a real, developer-facing REST API with self-service auth, a free

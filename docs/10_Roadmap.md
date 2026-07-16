@@ -662,6 +662,53 @@ call. Connector availability is cross-checked honestly via the existing
 untouched + 78 new). Full write-up:
 [29_Automatic_Platform_Discovery.md](29_Automatic_Platform_Discovery.md).
 
+## Version 2.5 Step 14 — Continuous Monitoring and Saved Search Engine (done 2026-07-16)
+
+Turns the platform from a one-time research tool into a repeatable monitoring
+system — explicitly **not** email/SMS/Slack/push delivery, **not** a web
+dashboard, **not** autonomous connector generation. `src/monitoring/` —
+`MonitoringEngine`/`MonitoringRegistry`/`EventDetector`, a 9th application of
+this codebase's established self-registering plugin shape. Five built-in
+detectors ship this sprint (`apartment_change`, `ranking_change`,
+`filter_match`, `platform_health`, `discovery`), each reading a shared
+`MonitoringDetectionContext` built once per run; adding a sixth requires zero
+`MonitoringEngine` changes.
+
+A `SavedSearch` is a mutable current-state row whose actual definition never
+changes in place — every edit (`MonitoringEngine.update_saved_search()`)
+appends a new immutable `SavedSearchVersion` and bumps the pointer. Every
+heavy engine this sprint touches — `RentalResearchAgent`, `FilterEngine`,
+`GeographicEngine`, `RankingEngineV2`, `FeedbackEngine`,
+`AutomaticDiscoveryAgent` — is reused exactly as published; the only
+production-code change to an existing engine is one new optional
+`RentalResearchAgent(..., allowed_platform_ids=None)` constructor parameter
+(unchanged behavior for every existing caller) so a saved search can narrow
+which connector-available platforms actually get queried. Comparison between
+runs reuses `SearchComparison` (Search Memory) directly rather than
+re-diffing apartments; a small, additive `search_memory_service
+.get_search_execution(conn, search_id)` was the one new public accessor that
+module needed.
+
+New migration `0009_continuous_monitoring.sql` — 9 tables (`saved_searches`,
+`saved_search_versions`, `monitoring_schedules`, `monitoring_runs`,
+`monitoring_events`, `event_acknowledgements`, `monitoring_statistics`,
+`report_artifacts`); every table but `saved_searches`/`monitoring_schedules`/
+`monitoring_runs` is strictly append-only (`monitoring_events` has exactly one
+current-state flag, `acknowledged`), mirroring migration 0008's own shape.
+`monitoring_schedules` doubles as the run-claim lock — one atomic conditional
+`UPDATE` makes "two workers can't claim the same run" true on SQLite without a
+separate locking mechanism.
+
+Listing removal uses a three-stage state machine (`missing` →
+`possibly_removed` → `confirmed_removed`) gated by a configurable consecutive-
+miss threshold — "do not mark a listing removed after one failed observation"
+(the mission's own words) — and fires `LISTING_REMOVED` exactly once, on the
+run that crosses the threshold. Event deduplication is checked centrally, once
+per run, after every detector has contributed candidate events, rather than
+inside each detector. Significance scoring is deterministic throughout, never
+an ML model. 88 new tests (1030 total: 942 existing untouched + 88 new). Full
+write-up: [30_Continuous_Monitoring.md](30_Continuous_Monitoring.md).
+
 ## Beyond Version 2.0 (explicitly deferred)
 
 Renamed from "V2+" to avoid confusion with the new, formal "Version 2.0" above — this

@@ -4,6 +4,69 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.6] — 2026-07-16 — Continuous Monitoring and Saved Search Engine
+
+Turns the platform into a repeatable monitoring system — save a reusable search,
+re-run it manually or on a schedule, compare each run with the last, generate
+structured events for genuine changes. Not email/SMS/Slack/push delivery, not a
+web dashboard, not autonomous connector generation.
+
+### Added
+- `src/monitoring/` — `MonitoringEngine` (saved-search lifecycle + the 12-step
+  monitoring workflow), `MonitoringRegistry`/`EventDetector` (self-registering
+  plugin system, 5 built-in detectors), `scheduling.py` (database-backed
+  due/claim/release interface), `significance.py`/`removal.py`/`deduplication.py`
+  (deterministic change scoring, the three-stage removal state machine, centralized
+  event suppression), `statistics.py` (`compute_statistics()`/
+  `compare_monitoring_runs()`), `feedback_integration.py` (explicit-reaction-only
+  bridge to the Feedback Engine), `report.py` (full + change-only HTML/JSON
+  reports).
+- Five built-in event detectors: `apartment_change` (new match/listing, price,
+  availability, listing detail changes, removal-threshold tracking), `ranking_change`
+  (rank/score movement, better-match-found), `filter_match` (gained/lost),
+  `platform_health` (connector failure/recovery), `discovery` (new platform
+  candidates, connector-availability changes).
+- Immutable saved-search versioning: `SavedSearch` (current-state row) +
+  `SavedSearchVersion` (append-only) — every edit creates a new version, prior
+  versions stay fully reproducible.
+- Migration `0009_continuous_monitoring.sql` — 9 tables (`saved_searches`,
+  `saved_search_versions`, `monitoring_schedules`, `monitoring_runs`,
+  `monitoring_events`, `event_acknowledgements`, `monitoring_statistics`,
+  `report_artifacts`). `0001`–`0008` untouched. `monitoring_schedules` doubles as
+  the atomic run-claim lock.
+- `src/ui/monitoring_cli.py` — a new, separate CLI entry point:
+  `create-saved-search`/`list-saved-searches`/`view-saved-search`/
+  `update-saved-search`/`enable-saved-search`/`disable-saved-search`/`run-now`/
+  `run-due`/`list-runs`/`compare-runs`/`list-events`/`acknowledge-event`/
+  `export-events`/`next-run`/`health`/`task-scheduler-examples`.
+- `docs/30_Continuous_Monitoring.md`.
+- 88 new tests (1030 total).
+
+### Changed (backward compatible)
+- `RentalResearchAgent.__init__` gained one optional `allowed_platform_ids: list[str]
+  | None = None` parameter — `None` (every existing caller) is unchanged behavior;
+  when given, narrows (never expands) which connector-available platforms `discover()`
+  already permits.
+- `search_memory_service.py` gained one small additive public accessor,
+  `get_search_execution(conn, search_id)` — every other read function there was
+  scoped by `location`, not by a specific search id.
+
+### Explicitly not duplicated / not built this sprint
+- Every heavy engine this sprint touches — `RentalResearchAgent`, `FilterEngine`,
+  `GeographicEngine`, `RankingEngineV2`, `FeedbackEngine`, `AutomaticDiscoveryAgent`
+  — is reused via its already-public API, unchanged.
+- Notification *delivery* (email/SMS/Slack/push), a web dashboard, and autonomous
+  connector generation are explicitly out of scope this sprint, per the mission's
+  own instructions.
+- Comparison between monitoring runs reuses `SearchComparison` (Search Memory)
+  directly — never a second, parallel apartment-diffing implementation.
+
+### Key design decision
+- Event deduplication is checked centrally, once per run, after every detector has
+  contributed candidate events — not inside each detector. `LISTING_REMOVED` fires
+  exactly once, on the run that crosses `removed_listing_threshold`, never on every
+  subsequent run a listing stays missing.
+
 ## [2.5.5] — 2026-07-16 — Automatic Platform Discovery Agent
 
 A provider-independent system that discovers, evaluates, deduplicates, classifies,

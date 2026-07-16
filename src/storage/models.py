@@ -541,3 +541,170 @@ class DiscoveryProviderObservationRecord:
     duration_ms: int | None = None
     error: str | None = None
     id: int | None = None
+
+
+@dataclass
+class SavedSearchRecord:
+    """Mirrors one row of `saved_searches` (migration 0009, v2.5 Step 14) — one
+    *current-state* row per saved search (mutable, like `platforms`), but its
+    actual search definition never changes in place: every edit appends a new
+    `SavedSearchVersionRecord` and bumps `current_version` to point at it.
+    """
+
+    saved_search_id: str
+    name: str
+    current_version: int
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    profile_id: str | None = None
+    description: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class SavedSearchVersionRecord:
+    """Mirrors one row of `saved_search_versions` (migration 0009) — append-only,
+    one immutable row per edit. `request`/`active_filters`/`selected_platforms`/
+    `selected_connectors`/`monitoring_policy`/etc. are exactly what one
+    `MonitoringEngine` run for this version reproduces — "Previous versions
+    remain reproducible" (the mission's own words).
+    """
+
+    saved_search_id: str
+    version: int
+    request: dict
+    active_filters: dict
+    selected_platforms: list[str]
+    selected_connectors: list[str]
+    geographic_destinations: list[str]
+    monitoring_policy: dict
+    report_options: dict
+    retention_policy: dict
+    tags: list[str]
+    metadata: dict
+    created_at: datetime
+    ranking_profile: dict | None = None
+    feedback_mode: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class MonitoringScheduleRecord:
+    """Mirrors one row of `monitoring_schedules` (migration 0009) — one current-
+    state row per saved search, doubling as the "when is this due" bookkeeping
+    and the run-claim lock (`claimed_by`/`claim_expires_at`) — "Prevent two
+    workers from executing the same scheduled run simultaneously" (the mission's
+    own words), via a single conditional `UPDATE` (see
+    `monitoring_repository.claim_due_run()`).
+    """
+
+    saved_search_id: str
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    last_run_status: str | None = None
+    claimed_by: str | None = None
+    claimed_at: datetime | None = None
+    claim_expires_at: datetime | None = None
+    id: int | None = None
+
+
+@dataclass
+class MonitoringRunRecord:
+    """Mirrors one row of `monitoring_runs` (migration 0009) — one append-only
+    header row per `MonitoringEngine.run_now()`/scheduled execution, the run
+    every `MonitoringEventRecord` from it links back to. `status` is the only
+    field this row's own repository function (`update_run_status`) ever
+    updates, exactly like `discovery_runs.update_run_summary()`.
+    """
+
+    monitoring_run_id: str
+    saved_search_id: str
+    saved_search_version: int
+    status: str
+    started_at: datetime
+    platforms_attempted: list[str]
+    platforms_succeeded: list[str]
+    platforms_failed: list[str]
+    search_id: str | None = None
+    completed_at: datetime | None = None
+    event_count: int = 0
+    notes: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class MonitoringEventRecord:
+    """Mirrors one row of `monitoring_events` (migration 0009) — append-only,
+    one row per detected change. `acknowledged` is the single current-state
+    field this otherwise-immutable row ever has updated (see
+    `monitoring_repository.acknowledge_event()`); every other field is written
+    once and never revised — "Never overwrite events" (the mission's own
+    words).
+    """
+
+    event_id: str
+    monitoring_run_id: str
+    saved_search_id: str
+    saved_search_version: int
+    event_type: str
+    severity: str
+    significance: float
+    explanation: str
+    evidence: dict
+    detected_at: datetime
+    dedup_key: str
+    metadata: dict
+    search_id: str | None = None
+    apartment_id: str | None = None
+    platform_id: str | None = None
+    connector_id: str | None = None
+    old_value: dict | None = None
+    new_value: dict | None = None
+    acknowledged: bool = False
+    notification_eligible: bool = True
+    id: int | None = None
+
+
+@dataclass
+class EventAcknowledgementRecord:
+    """Mirrors one row of `event_acknowledgements` (migration 0009) — append-
+    only audit trail of *who*/*when* acknowledged an event, kept separate from
+    `monitoring_events.acknowledged` (the cheap current-state flag) so both a
+    fast "is this acked" lookup and a full history exist.
+    """
+
+    event_id: str
+    acknowledged_at: datetime
+    acknowledged_by: str | None = None
+    note: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class MonitoringStatisticsRecord:
+    """Mirrors one row of `monitoring_statistics` (migration 0009) — append-
+    only, one row per run summarizing its own computed aggregates (event
+    counts by type, suppressed-duplicate count, etc.), the same "one append-
+    only row per execution" shape `discovery_provider_observations` already
+    established.
+    """
+
+    monitoring_run_id: str
+    computed_at: datetime
+    statistics: dict
+    id: int | None = None
+
+
+@dataclass
+class ReportArtifactRecord:
+    """Mirrors one row of `report_artifacts` (migration 0009) — append-only,
+    one row per generated report file (`report_type` is one of `full_html`/
+    `full_json`/`changes_html`/`changes_json`).
+    """
+
+    monitoring_run_id: str
+    report_type: str
+    path: str
+    generated_at: datetime
+    id: int | None = None

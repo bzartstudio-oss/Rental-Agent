@@ -68,6 +68,7 @@ class RentalResearchAgent:
         feedback_engine: FeedbackEngine | None = None,
         feedback_profile_id: str | None = None,
         feedback_mode: FeedbackMode = FeedbackMode.SUGGESTED,
+        allowed_platform_ids: list[str] | None = None,
     ) -> None:
         """`data_router`/`ai_router`/`filter_engine`/`geo_engine` are optional and
         default to `None` — every existing caller (every test that doesn't pass them)
@@ -108,7 +109,12 @@ class RentalResearchAgent:
         `EXPLICIT_ONLY`/`SUGGESTED` (the default) leave `ranking_engine_v2.profile`
         completely untouched; only `feedback_mode=FeedbackMode.ASSISTED` substitutes
         a learned, evidence-based profile, and even then seeded from the user's own
-        explicit weights as a base.
+        explicit weights as a base. See docs/30_Continuous_Monitoring.md "Reuse" for
+        `allowed_platform_ids`: when given, restricts the platforms actually queried
+        to this subset of `discover()`'s own (already connector-available) result —
+        never an addition to it, so this can only narrow, never expand, what
+        `DiscoveryAgent.discover()` already permits. `None` (every existing caller)
+        is unchanged behavior: every connector-available platform is queried.
         """
         self._db = db
         self._output_dir = output_dir
@@ -123,6 +129,7 @@ class RentalResearchAgent:
         self._feedback_engine = feedback_engine
         self._feedback_profile_id = feedback_profile_id
         self._feedback_mode = feedback_mode
+        self._allowed_platform_ids = allowed_platform_ids
 
     def run(self, request: SearchRequest) -> SearchRunResult:
         """Runs one search to completion: persists the request, discovers relevant
@@ -174,6 +181,8 @@ class RentalResearchAgent:
             )
 
         platforms = self._discovery.discover(request)
+        if self._allowed_platform_ids is not None:
+            platforms = [platform for platform in platforms if platform.id in self._allowed_platform_ids]
         discovered_platform_ids = [platform.id for platform in platforms]
         searched_platform_ids: list[str] = []
         connector_versions: dict[str, str | None] = {}

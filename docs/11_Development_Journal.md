@@ -349,3 +349,83 @@ to-end against a real (offline, no-network) SQLite database for Spain/Valencia
 before any test was written — caught the run-compares-itself-against-itself refresh
 bug this way, not via a test. New `docs/29_Automatic_Platform_Discovery.md`. Full
 detail in `learning/architecture_notes.md`.
+
+## 2026-07-16 — Version 2.5 Step 14: Continuous Monitoring and Saved Search Engine
+
+Explicit instruction: turn the platform into a repeatable monitoring system — NOT
+email/SMS/Slack/push delivery, NOT a web dashboard, NOT autonomous connector
+generation. Answered up front: (1) monitoring stays separate from a normal search
+because it's stateful (needs a comparison baseline, safe re-triggering, a different
+output shape) where a normal search is one-shot; (2) saved searches need immutable
+versions for the same reason `DiscoveryRun`/`Platform` history already does —
+auditability and reproducible comparison; (3) change detection needs historical
+snapshots because "what changed" is inherently a two-point-in-time question; (4)
+notification generation and delivery stay separate because generation is a
+deterministic judgment this sprint can make today, delivery needs infrastructure
+this sprint doesn't build; (5) failure isolation reuses the exact pattern
+`RentalResearchAgent.run()`/`AutomaticDiscoveryAgent` already established; (6)
+monitoring adds accuracy without rewriting application code because every engine it
+touches is reused via its already-public API, unchanged.
+
+New `src/monitoring/` package, a 9th application of this codebase's established
+self-registration shape. `EventDetector` (ABC, `metadata()`+`detect(context)`), five
+built-in: `apartment_change`, `ranking_change`, `filter_match`, `platform_health`,
+`discovery`. Investigation before writing code found the single clearest "reuse, don't
+rebuild" seam in the whole sprint: `RankingContext.search_comparison` was already
+typed to accept a `search_memory.models.SearchComparison`, meaning the ranking engine
+had been pre-wired for exactly this kind of diff since Step 11, unused until now.
+
+One small, deliberate, backward-compatible change to an *existing* engine:
+`RentalResearchAgent.__init__` gained an optional `allowed_platform_ids: list[str] |
+None = None` parameter (every existing caller unaffected) so a saved search's
+`selected_platforms`/`selected_connectors` allowlist and a policy's `enabled_
+providers`/`disabled_providers` can genuinely narrow which connector-available
+platforms get queried, at the query level — not just recorded as metadata nobody
+enforces. `search_memory_service.py` gained one small additive public accessor,
+`get_search_execution(conn, search_id)` — every other read function there was scoped
+by `location`, and monitoring needed one specific prior run's `failed_platform_ids`
+directly, not re-derived from a location-scoped history list.
+
+Listing removal is a three-stage state machine (`missing` → `possibly_removed` →
+`confirmed_removed`), gated by a configurable consecutive-miss threshold — "do not
+mark a listing removed after one failed observation," the mission's own words —
+firing `LISTING_REMOVED` exactly once, on the run that crosses the threshold, never
+on every subsequent run it stays missing. `consecutive_absences()` takes an
+already-batched, newest-first list of observed-apartment-id sets rather than
+querying per apartment. Event deduplication was originally written *inside* each
+detector's own event-building helper; refactored during this sprint to a single
+central check in `MonitoringEngine`, after every detector has run — one
+responsibility, one place, and it makes `MonitoringStatistics
+.suppressed_duplicate_count` a trivial before/after count instead of five separate
+counters. That refactor briefly left a stale `is_duplicate(...)` call inside
+`RankingChangeDetector.detect()`'s main loop after the import was removed — a
+`NameError` that would have crashed on the very first real rank-change or
+better-match scenario in production. Caught by `tests/monitoring/test_detectors.py`,
+not by manual smoke-testing, exactly the reason that test file was written before
+moving on.
+
+`monitoring_schedules` doubles as both "next run time" bookkeeping and the run-claim
+lock: `claim_due_run()` is one atomic conditional `UPDATE ... WHERE claimed_by IS
+NULL OR claim_expires_at < ?`, proven race-free with a dedicated `test_claim_
+prevents_a_second_worker` test using two sequential calls with different worker ids
+against the same schedule row.
+
+88 new tests (1030 total: 942 existing untouched + 88 new) — migration + repository
+round-trip tests (the atomic claim lock, `saved_search_versions` never overwritten,
+`monitoring_events.acknowledged` as the one mutable field), pure-function unit tests
+for significance/removal/deduplication/`compute_next_run_at`'s manual/interval/
+daily/weekly branches, 21 detector unit tests driven against a hand-built
+`MonitoringDetectionContext` (no full research-agent run needed to prove price-
+decrease/increase, availability-flip, single-miss-doesn't-confirm-removal,
+exactly-at-threshold-confirms-removal, no-repeat-after-threshold, returned-takes-
+precedence-over-new-match, rank-increase/decrease, better-match-above/below-
+threshold, filter-match-gained/lost, connector-failure/recovery), and a full
+`MonitoringEngine` integration suite driven through the real `demo_platform`
+connector (mirrors `tests/core/test_agent.py`'s own "real orchestrator, real
+connector" discipline) proving: updating a saved search creates a new version
+without touching the old one, a real run produces fully traceable events, repeated
+runs accumulate history, re-running unchanged fixtures does not fabricate apartment-
+change events, a broken second connector produces a `PARTIAL` run (not `FAILED`,
+not a crash) while keeping `demo_platform`'s own successful results, and all four
+report artifacts are written and reference the real original listing URL. New
+`docs/30_Continuous_Monitoring.md`. Full detail in `learning/architecture_notes.md`.

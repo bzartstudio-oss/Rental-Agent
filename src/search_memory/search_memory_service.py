@@ -142,6 +142,16 @@ def search_timeline(conn: sqlite3.Connection, location: str) -> SearchTimeline:
     return SearchTimeline(location=location, executions=[_to_search_execution(record) for record in records])
 
 
+def get_search_execution(conn: sqlite3.Connection, search_id: str) -> SearchExecution | None:
+    """The one direct by-id lookup this module was missing — every other read
+    function here is scoped by `location`. Added for v2.5 Step 14 (Continuous
+    Monitoring), which needs one specific prior run's `failed_platform_ids`/
+    `runtime_stats` without re-deriving them from a location-scoped list.
+    """
+    record = search_repository.get_search_request(conn, search_id)
+    return _to_search_execution(record) if record is not None else None
+
+
 def compare_searches(conn: sqlite3.Connection, search_id_a: str, search_id_b: str) -> SearchComparison:
     """`CompareSearch(search_a, search_b)` — order doesn't need to match creation order;
     whichever of the two was created first is treated as "previous."

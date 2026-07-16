@@ -75,6 +75,36 @@ existing boxes rather than adding new ones: the Analysis Engine box now also run
 Ranking Engine box now consults the **Dynamic Filter Engine**
 ([04_Search_Request.md](04_Search_Request.md)).
 
+## The v2.5 Monitoring Layer (Step 14)
+
+`MonitoringEngine` (`src/monitoring/engine.py`) sits **above** the whole
+pipeline in the diagram above, never inside it — it calls `RentalResearchAgent
+.run()` the same way any other caller does, once per monitoring cycle:
+
+```
+SavedSearch + SavedSearchVersion (immutable)
+        │
+        ▼
+MonitoringEngine.run_now() / .run_due()
+        │
+        ├─ RentalResearchAgent.run()  ── the exact diagram above, unchanged
+        │       │
+        │       ▼
+        │  Apartment DB / Search History / Knowledge Engine (already updated by the run itself)
+        │
+        ├─ compares this run against the saved search's *previous* MonitoringRun
+        │  (search_memory_service.compare_searches(), reused)
+        │
+        ├─ 5 self-registering EventDetectors → MonitoringEvent rows
+        │
+        └─ full + change-only HTML/JSON reports
+```
+
+No box in the original pipeline changes shape to support this — the only
+production-code addition to `core/agent.py` is one optional constructor
+parameter (`allowed_platform_ids`, `None` by default) so a saved search can
+narrow which already-discovered, connector-available platforms get queried.
+
 ## Module Responsibility Table
 
 | Module (package) | Responsibility | Must NOT contain | Doc |
@@ -102,6 +132,7 @@ Ranking Engine box now consults the **Dynamic Filter Engine**
 | `ranking_v2/` **(live, v2.5 Step 11)** | A modular, explainable, evidence-based Intelligent Ranking Engine — 12 self-registering rules combining Dynamic Filters/Geographic Intelligence/Apartment History/Knowledge Engine/Provider Health/Search History, user-configurable weights, full per-apartment explanation and confidence | Hard-filtering (stays `RankingEngine`/`FilterEngine`'s job); any evidence-computation formula another engine already owns (reuses each engine's own read functions) | [27_Intelligent_Ranking_Engine.md](27_Intelligent_Ranking_Engine.md) |
 | `feedback/` **(live, v2.5 Step 12)** | The User Feedback and Preference Learning Engine — 23 self-registering preference rules learning from explicit, traceable evidence (append-only events), deterministic decay/confidence math, a `ranking_v2` adapter producing only *suggested* weights | Opaque ML/prediction; direct coupling to individual `RankingRule`s; inferring sensitive personal characteristics from behavior | [28_User_Feedback_and_Preference_Learning.md](28_User_Feedback_and_Preference_Learning.md) |
 | `discovery/automatic/` **(live, v2.5 Step 13)** | The Automatic Platform Discovery Agent — a provider-independent framework (2 self-registering sources: curated seed list, manual URLs) that discovers, deduplicates, classifies (deterministic keyword scoring), verifies, and estimates capabilities for candidate rental platforms, storing them append-only alongside the existing Platform Registry | Generating connector code; bypassing authentication/CAPTCHAs/robots restrictions/rate limits; automatically activating a discovered platform (only an approved connector/API integration does that) | [29_Automatic_Platform_Discovery.md](29_Automatic_Platform_Discovery.md) |
+| `monitoring/` **(live, v2.5 Step 14)** | The Continuous Monitoring & Saved Search Engine — versioned saved searches, a database-backed scheduling/claim interface, 5 self-registering event detectors comparing consecutive `RentalResearchAgent` runs, deterministic significance/dedup/removal-threshold logic, full+change-only HTML/JSON reports | Any single stage's business logic (reuses `RentalResearchAgent`/`FilterEngine`/`GeographicEngine`/`RankingEngineV2`/`FeedbackEngine`/`AutomaticDiscoveryAgent` unchanged); email/SMS/Slack/push delivery; a web dashboard; autonomous connector generation | [30_Continuous_Monitoring.md](30_Continuous_Monitoring.md) |
 
 ## The Independence Guardrail
 

@@ -224,6 +224,13 @@ src/
                                                          # discovery_provider_observations — data access only;
                                                          # every table but platform_candidates/discovery_runs is
                                                          # strictly append-only (no update/delete function exists)
+    monitoring_repository.py                           # [live, v2.5 Step 14] saved_searches, saved_search_versions,
+                                                         # monitoring_schedules, monitoring_runs, monitoring_events,
+                                                         # event_acknowledgements, monitoring_statistics,
+                                                         # report_artifacts — data access only; saved_searches/
+                                                         # monitoring_schedules/monitoring_runs/monitoring_events
+                                                         # each have exactly one mutation function, every other
+                                                         # table is strictly append-only
   services/
     __init__.py
     report_generator.py                           # HTML Report Generator — see 09_Report_System.md
@@ -233,6 +240,10 @@ src/
     feedback_cli.py                                    # [live, v2.5 Step 12] record/profile/explain/history/undo/reset/export
     discovery_cli.py                                    # [live, v2.5 Step 13] discover/list-*/compare-runs/
                                                           # approve-candidate/reject-candidate/view-evidence/view-coverage-summary
+    monitoring_cli.py                                    # [live, v2.5 Step 14] create/list/view/update/enable/disable
+                                                          # -saved-search, run-now/run-due, list-runs/compare-runs,
+                                                          # list-events/acknowledge-event/export-events, next-run,
+                                                          # health, task-scheduler-examples
   utils/
     __init__.py
     logging.py                                        # [v2.0 Step 7, live] get_logger()/StructuredFormatter —
@@ -353,6 +364,38 @@ src/
       geo_rules.py                                                           # walking_distance, public_transport, lifestyle,
                                                                               # nearby_services, neighborhood
       amenity_rules.py                                                       # 11 dormant-field dimensions (filter-choice-only evidence)
+  monitoring/                                           # [live, new package, v2.5 Step 14] the Continuous
+                                                          # Monitoring & Saved Search Engine — see 30_Continuous_Monitoring.md
+    __init__.py                                            # imports detectors/ -> self-registration
+    exceptions.py                                            # MonitoringException hierarchy
+    metadata.py                                               # EventDetectorMetadata
+    models.py                                                  # SavedSearch/Version, MonitoringSchedule/Run/RunStatus/
+                                                                 # Policy/Configuration/Event/EventType/Comparison/
+                                                                 # RankChange/Statistics/Report/Health
+    base_detector.py                                            # EventDetector (ABC), MonitoringDetectionContext
+    registry.py                                                  # MonitoringRegistry, register_event_detector()
+    service.py                                                    # thin storage orchestration (mirrors discovery/automatic/service.py)
+    scheduling.py                                                  # due_saved_searches/next_run_time/claim_due_run/
+                                                                     # release_run_claim/mark_run_*/compute_health/
+                                                                     # task_scheduler_command_examples
+    significance.py                                                 # deterministic significance scoring, no ML
+    deduplication.py                                                 # make_dedup_key(), is_duplicate() — checked
+                                                                       # centrally, once, by the engine
+    removal.py                                                        # missing -> possibly_removed -> confirmed_removed
+    statistics.py                                                      # compute_statistics(), compare_monitoring_runs()
+    feedback_integration.py                                             # record_user_reaction() — never called automatically
+    engine.py                                                            # MonitoringEngine — saved-search lifecycle + 12-step workflow
+    report.py                                                            # full + change-only HTML/JSON monitoring reports
+    detectors/
+      __init__.py                                                        # eager imports -> self-registration
+      apartment_change_detector.py                                         # new match/listing, price, availability,
+                                                                             # listing_updated/images/description,
+                                                                             # removal threshold, returned
+      ranking_change_detector.py                                            # rank_increased/decreased, better_match_found
+      filter_match_detector.py                                               # filter_match_gained/lost
+      platform_health_detector.py                                             # connector_failure/recovered
+      discovery_detector.py                                                    # discovery_found_new_platform,
+                                                                                 # platform_became_accessible
   rental_agent.py                                       # thin script wrapper: parses argv, calls ui.cli
 ```
 

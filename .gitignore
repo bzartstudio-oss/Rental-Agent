@@ -14,3 +14,4 @@ data/cache/*
 data/.web_secret_key
 backups/
 project_review.txt
+.claude/

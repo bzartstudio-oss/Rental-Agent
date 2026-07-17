@@ -1,0 +1,47 @@
+{
+  "release": "2.5.0-rc1",
+  "branch": "release/v2.5-rc1",
+  "parent_commit": "d2ec25a05f4384e2211446d1229c25ba475ae4a6",
+  "created_at": "2026-07-17T02:00:00+00:00",
+  "test_suite": {
+    "total_tests": 1308,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "warnings": 0,
+    "execution_time_seconds": 215.943
+  },
+  "migrations": {
+    "count": 11,
+    "latest": "0011_web_dashboard.sql"
+  },
+  "acceptance": {
+    "journeys_passing": 6,
+    "document": "docs/33_Release_Candidate_Acceptance.md"
+  },
+  "security": {
+    "document": "docs/34_Security_Acceptance.md",
+    "all_checks": "PASS"
+  },
+  "backup_restore": {
+    "tests_passing": 10,
+    "document": "tests/scripts/test_backup_restore.py"
+  },
+  "health_check": {
+    "checks_total": 13,
+    "checks_passing": 13,
+    "script": "scripts/health_check.py"
+  },
+  "dependencies_removed": ["pandas", "numpy", "reportlab", "python-docx"],
+  "dependencies_added_previously": ["Flask (Step 16)"],
+  "documents_added_this_step": [
+    "docs/33_Release_Candidate_Acceptance.md",
+    "docs/34_Security_Acceptance.md",
+    "docs/35_Installation_and_Operations.md",
+    "docs/36_Performance_Baseline.md",
+    "MASTER_SPEC.md",
+    "RELEASE_NOTES_v2.5-rc1.md"
+  ],
+  "recommended_tag": "v2.5.0-rc1",
+  "merged_to_main": false
+}

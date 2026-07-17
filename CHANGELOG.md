@@ -4,6 +4,59 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.0-rc1] — 2026-07-17 — Release Candidate Acceptance
+
+The Release Candidate Acceptance sprint: no new product features — this
+release verifies, stabilizes, documents, and packages every prior sprint
+(V1.0 through Step 16) into an installable, testable, backup-able whole for
+real user testing. Branch: `release/v2.5-rc1` (not merged to `main`/
+`platform-v1`).
+
+### Added
+- `tests/acceptance/` — six deterministic, real end-to-end user-journey test
+  suites (new search, repeat search/history, saved search/monitoring,
+  notifications, feedback/ranking, discovery), each driving the real Flask
+  app object or the real engines directly.
+- `scripts/backup.py`, `scripts/restore.py`, `scripts/verify_backup.py` —
+  timestamped, checksummed, optionally-compressed local backups (SQLite's
+  own online backup API, raw pages, media, reports, non-secret config);
+  restore requires an explicit destination, refuses to overwrite a
+  non-empty one without `--force`, and integrity-checks the restored
+  database automatically. Never includes `.env`/`.web_secret_key`/channel
+  credentials.
+- `scripts/health_check.py` — 13-check local installation health check
+  (Python version, dependencies, Playwright, configuration, writable data
+  directories, database, migrations, web binding, connector/provider/
+  geographic-provider/notification-channel registries, disk space).
+- `scripts/start_web.ps1` — Windows PowerShell startup convenience script.
+- `docs/33_Release_Candidate_Acceptance.md`, `docs/34_Security_Acceptance.md`,
+  `docs/35_Installation_and_Operations.md`, `docs/36_Performance_Baseline.md`.
+- `MASTER_SPEC.md` — a single, generated-from-reality reference covering the
+  entire platform's architecture, every engine, every extension point, and
+  the new-developer onboarding checklist.
+- `RELEASE_NOTES_v2.5-rc1.md`, `VERSION` file.
+- Expanded `.env.example` with every real environment variable this
+  codebase actually reads (previously only documented `OPENAI_API_KEY`).
+
+### Fixed
+- `tests/storage/test_database_migrations.py` — 4 tests had a hardcoded
+  `[1..10]` migration-version list that needed extending to `[1..11]` after
+  Step 16's migration; stale, not a regression.
+
+### Removed
+- **`pandas`, `numpy`, `reportlab`, `python-docx`** — verified unused (never
+  imported anywhere in `src/`, not a transitive dependency of anything else
+  in `requirements.txt`) and confirmed safe by re-running the complete test
+  suite after uninstalling them. Likely leftover from early exploration of a
+  PDF report generator, a path this project explicitly decided against
+  (HTML/JSON only — see docs/09_Report_System.md).
+
+### Explicitly Not Done This Sprint
+- No new product features, no architecture redesign, no speculative
+  abstractions — see docs/33's "Known Gaps" for pre-existing, honestly
+  documented (not newly introduced) limitations surfaced by this
+  acceptance sprint's own testing.
+
 ## [2.5.8] — 2026-07-16 — Web Dashboard and API
 
 The first non-CLI interface: a local, server-rendered Flask web application

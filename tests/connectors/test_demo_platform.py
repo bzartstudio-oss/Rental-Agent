@@ -12,7 +12,7 @@ from urllib.request import url2pathname
 from src.connectors.demo_platform import DemoPlatformConnector
 from src.search.search_request import SearchRequest
 from tests.connectors.sdk.certification import ConnectorCertificationMixin
-from tests.support import isolated_collectors
+from tests.support import isolated_collectors, use_demo_fixture_snapshot
 
 
 def _file_uri_to_path(uri: str) -> Path:
@@ -115,6 +115,53 @@ class DemoPlatformConnectorTests(unittest.TestCase):
         result = self._search()
         self.assertIsNotNone(result.response_time_ms)
         self.assertGreaterEqual(result.response_time_ms, 0)
+
+
+class DemoPlatformWeek2SnapshotTests(unittest.TestCase):
+    """v2.6 Milestone 2.6.4 — see docs/41_Version_2.6_Planning.md and
+    fixtures/demo_platform/listings_week2.html's own comment for the exact
+    three controlled changes this snapshot makes over listings.html.
+    """
+
+    def setUp(self) -> None:
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self._collectors_cm = isolated_collectors(Path(self._tmp_dir.name))
+        self._collectors_cm.__enter__()
+
+    def tearDown(self) -> None:
+        self._collectors_cm.__exit__(None, None, None)
+        self._tmp_dir.cleanup()
+
+    def test_week2_snapshot_has_the_three_documented_changes(self) -> None:
+        connector = DemoPlatformConnector()
+        with use_demo_fixture_snapshot("week2"):
+            result = connector.search(SearchRequest(location="Example City"))
+
+        self.assertTrue(result.success)
+        listings = {listing.platform_listing_id: listing for listing in result.listings}
+        self.assertEqual(
+            set(listings), {"demo-001", "demo-002", "demo-003", "demo-004"},
+            "expected week1's 3 listings plus 1 brand-new one",
+        )
+
+        self.assertEqual(listings["demo-001"].price, 1350.0)  # was 1450.0
+        self.assertEqual(listings["demo-002"].status, "unavailable")  # was "available"
+        self.assertEqual(listings["demo-003"].price, 2100.0)  # unchanged control
+        self.assertEqual(listings["demo-003"].status, "available")  # unchanged control
+        self.assertEqual(listings["demo-004"].price, 1250.0)
+
+    def test_snapshot_switch_is_temporary_and_scoped_to_the_with_block(self) -> None:
+        connector = DemoPlatformConnector()
+        with use_demo_fixture_snapshot("week2"):
+            during = connector.search(SearchRequest(location="Example City"))
+        after = connector.search(SearchRequest(location="Example City"))
+
+        self.assertEqual(during.results_count, 4)
+        self.assertEqual(after.results_count, 3)  # back to the permanent week1 catalog
+        self.assertEqual(
+            {listing.platform_listing_id for listing in after.listings},
+            {"demo-001", "demo-002", "demo-003"},
+        )
 
 
 if __name__ == "__main__":

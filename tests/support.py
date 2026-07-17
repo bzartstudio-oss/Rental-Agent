@@ -42,3 +42,25 @@ def isolated_collectors(tmp_dir: Path) -> Iterator[None]:
     finally:
         image_collector.collect_image = original_collect_image
         raw_page_store.save_page = original_save_page
+
+
+@contextmanager
+def use_demo_fixture_snapshot(snapshot: str) -> Iterator[None]:
+    """v2.6 Milestone 2.6.4 — temporarily points `demo_platform` at an alternate,
+    named fixture snapshot (currently only "week2" exists) instead of its
+    permanent "week1" catalog (`listings.html`), so a test can run monitoring
+    twice against two genuinely different, deterministic snapshots without any
+    change to `MonitoringEngine` itself. See
+    `src/connectors/fixtures/demo_platform/listings_week2.html` and
+    docs/41_Version_2.6_Planning.md. Real callers (`ConnectorFactory`, the CLI,
+    the dashboard) never call this — they always get "week1".
+    """
+    from src.connectors import demo_platform
+
+    filename = "listings_week2.html" if snapshot == "week2" else demo_platform._DEFAULT_FIXTURE_FILENAME
+    original = demo_platform._active_fixture_filename
+    demo_platform._active_fixture_filename = filename
+    try:
+        yield
+    finally:
+        demo_platform._active_fixture_filename = original

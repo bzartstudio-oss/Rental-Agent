@@ -24,7 +24,21 @@ from src.connectors.base import RawListing
 from src.connectors.sdk import BaseConnector, ConnectorMetadata, register_connector
 from src.search.search_request import SearchRequest
 
-_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "demo_platform" / "listings.html"
+_FIXTURES_DIR = Path(__file__).parent / "fixtures" / "demo_platform"
+_DEFAULT_FIXTURE_FILENAME = "listings.html"
+
+# v2.6 Milestone 2.6.4 — a swappable module-level default, not a per-instance
+# option: real callers (ConnectorFactory, the CLI, the dashboard) always
+# instantiate this connector with no arguments and always get the one
+# permanent "week 1" catalog. Only `tests.support.use_demo_fixture_snapshot()`
+# reassigns this, temporarily, so a test can run monitoring twice against two
+# genuinely different, deterministic snapshots — see
+# fixtures/demo_platform/listings_week2.html and
+# docs/41_Version_2.6_Planning.md Milestone 2.6.4. `build_url()` reads this at
+# call time (not a frozen `_FIXTURE_PATH` constant) specifically so that swap
+# takes effect on the connector's *next* search, exactly like a real second
+# monitoring run observing the platform some time later would.
+_active_fixture_filename = _DEFAULT_FIXTURE_FILENAME
 
 
 @register_connector
@@ -36,7 +50,7 @@ class DemoPlatformConnector(BaseConnector):
         connector would build its actual query URL from `request.location`/`.criteria`;
         this demo has nothing to query differently.
         """
-        return _FIXTURE_PATH.as_uri()
+        return (_FIXTURES_DIR / _active_fixture_filename).as_uri()
 
     def parse(self, raw_response: str) -> list[Tag]:
         soup = BeautifulSoup(raw_response, "lxml")
@@ -44,7 +58,7 @@ class DemoPlatformConnector(BaseConnector):
 
     def normalize(self, raw_record: Tag) -> RawListing:
         image_urls = [
-            (_FIXTURE_PATH.parent / img["src"]).resolve().as_uri() for img in raw_record.select(".photo")
+            (_FIXTURES_DIR / img["src"]).resolve().as_uri() for img in raw_record.select(".photo")
         ]
         return RawListing(
             platform_listing_id=raw_record["data-listing-id"],
@@ -55,7 +69,12 @@ class DemoPlatformConnector(BaseConnector):
             bathrooms=float(raw_record.select_one(".bathrooms").get_text(strip=True)),
             sqft=float(raw_record.select_one(".sqft").get_text(strip=True)),
             address_raw=raw_record.select_one(".address").get_text(strip=True),
-            status="available",
+            # v2.6 Milestone 2.6.4 — now read from the fixture (every listing in
+            # both listings.html and listings_week2.html carries a real
+            # `.status` span) instead of hardcoded, so the week2 snapshot can
+            # express a genuine availability change. Week 1's value is always
+            # "available", identical to the prior hardcoded behavior.
+            status=raw_record.select_one(".status").get_text(strip=True),
             image_urls=image_urls,
             # v2.6 Milestone 2.6.2 — the fixture now carries these too, so the
             # currency/property_type filters and the geographic engine have real

@@ -1,12 +1,22 @@
 <!DOCTYPE html>
 <html>
-<head><title>Demo Rentals — Fixture Listings Page</title></head>
+<head><title>Demo Rentals — Fixture Listings Page (Week 2 snapshot)</title></head>
 <body>
   <h1>Demo Rentals</h1>
+  <!-- v2.6 Milestone 2.6.4 — a second, deterministic snapshot of the same
+       catalog as listings.html, "one week later," with exactly three
+       controlled changes so monitoring's change-detection can be genuinely
+       demonstrated end-to-end (see docs/41_Version_2.6_Planning.md and
+       tests/support.py's use_demo_fixture_snapshot()):
+         1. demo-001's price drops 1450 -> 1350 (a real price_decreased event).
+         2. demo-002 goes available -> unavailable (a real availability event).
+         3. demo-004 is a brand-new listing (a real new_listing event).
+       demo-003 is deliberately left byte-for-byte identical to listings.html
+       as the "control" — proving nothing fires for what didn't change. -->
 
   <div class="listing" data-listing-id="demo-001">
     <h2 class="title">Bright 2BR Near the Park</h2>
-    <span class="price">1450</span>
+    <span class="price">1350</span>
     <span class="bedrooms">2</span>
     <span class="bathrooms">1</span>
     <span class="sqft">850</span>
@@ -31,7 +41,7 @@
     <span class="property_type">studio</span>
     <span class="latitude">39.4820</span>
     <span class="longitude">-0.3550</span>
-    <span class="status">available</span>
+    <span class="status">unavailable</span>
     <a class="url" href="https://example.com/demo-platform/listings/demo-002">View Listing</a>
     <img class="photo" src="images/demo-002.png">
   </div>
@@ -50,6 +60,22 @@
     <span class="status">available</span>
     <a class="url" href="https://example.com/demo-platform/listings/demo-003">View Listing</a>
     <img class="photo" src="images/demo-003.png">
+  </div>
+
+  <div class="listing" data-listing-id="demo-004">
+    <h2 class="title">Newly Listed Renovated 2BR</h2>
+    <span class="price">1250</span>
+    <span class="bedrooms">2</span>
+    <span class="bathrooms">1</span>
+    <span class="sqft">780</span>
+    <span class="address">77 Fresh Listing Lane, Example City</span>
+    <span class="currency">EUR</span>
+    <span class="property_type">apartment</span>
+    <span class="latitude">39.4770</span>
+    <span class="longitude">-0.3520</span>
+    <span class="status">available</span>
+    <a class="url" href="https://example.com/demo-platform/listings/demo-004">View Listing</a>
+    <img class="photo" src="images/demo-001.png">
   </div>
 </body>
 </html>

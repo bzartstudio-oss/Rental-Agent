@@ -18,10 +18,11 @@ from pathlib import Path
 from src.discovery import platform_registry
 from src.monitoring import MonitoringEngine, MonitoringPolicy, service as monitoring_service
 from src.monitoring.exceptions import MonitoringValidationError
-from src.monitoring.models import MonitoringRunStatus, SavedSearch
+from src.monitoring.models import MonitoringEventType, MonitoringRunStatus, SavedSearch
+from src.storage import apartment_repository
 from src.storage.database import Database
 from src.storage.models import Platform
-from tests.support import isolated_collectors
+from tests.support import isolated_collectors, use_demo_fixture_snapshot
 
 _NOW = datetime.now(timezone.utc)
 
@@ -187,6 +188,82 @@ class MonitoringEngineTests(unittest.TestCase):
         self.assertEqual({a.report_type for a in artifacts}, {"full_html", "full_json", "changes_html", "changes_json"})
         for artifact in artifacts:
             self.assertTrue(Path(artifact.path).exists())
+
+
+class MonitoringWeek2FixtureVariationTests(unittest.TestCase):
+    """v2.6 Milestone 2.6.4 — see docs/41_Version_2.6_Planning.md. Every event
+    asserted below comes from `MonitoringEngine.run_now()` actually re-detecting
+    real, controlled fixture differences across two genuine runs — never a
+    synthetic `record_event()`/`record_monitoring_event()` shortcut — proving
+    change-detection genuinely works end-to-end, which was structurally
+    impossible before this milestone (the demo fixtures were 100% static, so
+    two runs always observed bit-for-bit identical data; see
+    docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md finding #4).
+    """
+
+    def setUp(self) -> None:
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self.db = Database(db_path=Path(self._tmp_dir.name) / "test.db")
+        self._collectors_cm = isolated_collectors(Path(self._tmp_dir.name))
+        self._collectors_cm.__enter__()
+
+        with self.db.transaction() as conn:
+            platform_registry.register_platform(conn, Platform(
+                id="demo_platform", name="Demo Platform", country="N/A (local fixture)", homepage="local-fixture",
+                connector_available=True, connector_name="demo_platform", created_at=_NOW,
+            ))
+
+        self.engine = MonitoringEngine()
+        self.saved_search = self.engine.create_saved_search(
+            self.db, "Week 2 Variation Watch", {"location": "Example City", "criteria": {}},
+        )
+
+    def tearDown(self) -> None:
+        self._collectors_cm.__exit__(None, None, None)
+        self._tmp_dir.cleanup()
+
+    def test_two_real_runs_across_week1_and_week2_detect_the_three_controlled_changes(self) -> None:
+        run_1 = self.engine.run_now(self.db, self.saved_search.saved_search_id)
+        self.assertEqual(run_1.status, MonitoringRunStatus.COMPLETED)
+
+        with use_demo_fixture_snapshot("week2"):
+            run_2 = self.engine.run_now(self.db, self.saved_search.saved_search_id)
+        self.assertEqual(run_2.status, MonitoringRunStatus.COMPLETED)
+
+        with self.db.transaction() as conn:
+            events = monitoring_service.get_events_for_saved_search(conn, self.saved_search.saved_search_id)
+        run_2_events = [e for e in events if e.monitoring_run_id == run_2.monitoring_run_id]
+        event_types = {e.event_type for e in run_2_events}
+
+        # 1. demo-001's real price drop (1450 -> 1350).
+        self.assertIn(MonitoringEventType.PRICE_DECREASED, event_types)
+        price_event = next(e for e in run_2_events if e.event_type == MonitoringEventType.PRICE_DECREASED)
+        self.assertEqual(price_event.old_value["price"], 1450.0)
+        self.assertEqual(price_event.new_value["price"], 1350.0)
+
+        # 2. demo-002's real availability change (available -> unavailable).
+        self.assertIn(MonitoringEventType.NO_LONGER_AVAILABLE, event_types)
+        availability_event = next(e for e in run_2_events if e.event_type == MonitoringEventType.NO_LONGER_AVAILABLE)
+        self.assertEqual(availability_event.old_value["status"], "available")
+        self.assertEqual(availability_event.new_value["status"], "unavailable")
+
+        # 3. demo-004's real new listing.
+        self.assertIn(MonitoringEventType.NEW_LISTING, event_types)
+        new_listing_event = next(e for e in run_2_events if e.event_type == MonitoringEventType.NEW_LISTING)
+        self.assertIn("Newly Listed", new_listing_event.new_value["title"])
+
+        # demo-003 (the deliberate control, byte-for-byte unchanged) must not
+        # produce any apartment_change-detector event of its own in run 2.
+        with self.db.transaction() as conn:
+            demo_003 = apartment_repository.get_apartment_by_platform_listing(conn, "demo_platform", "demo-003")
+        self.assertIsNotNone(demo_003)
+        control_events = [e for e in run_2_events if e.apartment_id == demo_003.id]
+        self.assertEqual(control_events, [], "the unchanged control listing fabricated an event")
+
+        # Every asserted event carries a real, bounded significance score.
+        for event in (price_event, availability_event, new_listing_event):
+            self.assertGreaterEqual(event.significance, 0.0)
+            self.assertLessEqual(event.significance, 1.0)
 
 
 if __name__ == "__main__":

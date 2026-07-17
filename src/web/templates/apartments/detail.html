@@ -78,7 +78,11 @@
     {% if geo_history %}
       {% for entry in geo_history[:1] %}
         <p>Computed via {{ entry.provider_id }} ({{ entry.calculation_method }}) — confidence {{ entry.confidence if entry.confidence is not none else "unavailable" }}</p>
-        <pre>{{ entry.summary }}</pre>
+        {% if entry.summary.distances or entry.summary.nearby %}
+          <pre>{{ entry.summary }}</pre>
+        {% else %}
+          <p class="data-unavailable">Not available — no distances or nearby places could be computed for this apartment (coordinates unavailable).</p>
+        {% endif %}
       {% endfor %}
     {% else %}
       <p class="data-unavailable">No geographic analysis recorded for this apartment.</p>

@@ -10,7 +10,13 @@ from __future__ import annotations
 import re
 import time
 import unittest
+import uuid
+from datetime import datetime, timezone
 
+from src.geography.history import record_geo_enrichment
+from src.geography.models import GeoEnrichment, GeoResult, TravelMode
+from src.storage import apartment_repository
+from src.storage.models import Apartment
 from src.web.constants import TERMINAL_JOB_STATUSES
 from src.web.jobs import service as jobs_service
 from tests.web.helpers import csrf_token_from, web_test_app
@@ -128,6 +134,65 @@ class ApartmentImageServingTests(unittest.TestCase):
             apartment_id = re.search(r"/apartments/([a-f0-9\-]+)", resp.get_data(as_text=True)).group(1)
             resp = client.get(f"/apartments/{apartment_id}/media/does-not-exist.png")
             self.assertEqual(resp.status_code, 404)
+
+
+class ApartmentGeographicAnalysisRenderingTests(unittest.TestCase):
+    """Version 2.6 Milestone 2.6.1 — see
+    docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md finding #5:
+    the detail page used to render `entry.summary`'s raw Python dict repr
+    (e.g. `{'distances': {}, 'nearby': {}}`) whenever no real geographic
+    data existed, instead of a clean message.
+    """
+
+    def _insert_apartment(self, conn, now) -> str:
+        apartment_id = str(uuid.uuid4())
+        apartment_repository.insert_apartment(
+            conn,
+            Apartment(
+                id=apartment_id, platform_id="demo_platform", platform_listing_id=apartment_id,
+                title="Test Apartment", url="https://example.com/listings/test-geo",
+                current_price=1000.0, current_status="available", first_seen_at=now, last_seen_at=now,
+            ),
+        )
+        return apartment_id
+
+    def test_empty_geo_analysis_renders_clean_message_not_raw_dict(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            now = datetime.now(timezone.utc)
+            with db.transaction() as conn:
+                apartment_id = self._insert_apartment(conn, now)
+                # No coordinates -> the real GeographicEngine would produce
+                # exactly this: an enrichment with empty distances/nearby.
+                record_geo_enrichment(conn, GeoEnrichment(apartment_id=apartment_id), now)
+
+            resp = client.get(f"/apartments/{apartment_id}")
+            self.assertEqual(resp.status_code, 200)
+            html = resp.get_data(as_text=True)
+            self.assertIn("Not available", html)
+            self.assertNotIn("{'distances'", html)
+            self.assertNotIn("{&#39;distances&#39;", html)
+
+    def test_populated_geo_analysis_still_renders_real_data(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            now = datetime.now(timezone.utc)
+            with db.transaction() as conn:
+                apartment_id = self._insert_apartment(conn, now)
+                result = GeoResult(
+                    origin=(0, 0), destination=(0, 1), mode=TravelMode.WALKING, distance_km=2.5,
+                    travel_time_minutes=30.0, confidence=0.7, computed_at=now,
+                    provider_id="haversine", calculation_method="haversine",
+                )
+                enrichment = GeoEnrichment(apartment_id=apartment_id, distances={TravelMode.WALKING: result})
+                record_geo_enrichment(conn, enrichment, now)
+
+            resp = client.get(f"/apartments/{apartment_id}")
+            self.assertEqual(resp.status_code, 200)
+            html = resp.get_data(as_text=True)
+            self.assertIn("Computed via haversine", html)
+            self.assertIn("distances", html)
+            self.assertNotIn("Not available — no distances", html)
 
 
 class JobPageRefreshTests(unittest.TestCase):

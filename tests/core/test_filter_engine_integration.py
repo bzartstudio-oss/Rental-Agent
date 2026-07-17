@@ -8,6 +8,7 @@ tests/core/test_agent.py, still passing unmodified.
 from __future__ import annotations
 
 import contextlib
+import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -20,8 +21,9 @@ from src.core.agent import RentalResearchAgent
 from src.discovery import platform_registry
 from src.filter_engine import FilterEngine
 from src.search.search_request import SearchRequest
+from src.storage import reference_data_repository
 from src.storage.database import Database
-from src.storage.models import Platform
+from src.storage.models import KnowledgeEntry, Platform
 from tests.support import isolated_collectors
 
 
@@ -100,6 +102,86 @@ class FilterEngineIntegrationTests(unittest.TestCase):
         result = agent.run(SearchRequest(location="Example City", criteria={"private_bathroom": True}))
 
         self.assertEqual(len(result.apartments), 3)  # dormant filter never excludes
+
+    def test_currency_filter_now_discriminates_against_enriched_demo_data(self) -> None:
+        """v2.6 Milestone 2.6.2 (docs/41_Version_2.6_Planning.md) — before this, every
+        demo apartment's `currency` was `None`, so `CurrencyFilter` (fail-closed on
+        unknown currency) excluded every result no matter what currency was
+        requested. The fixture's listings are now all `EUR` (see
+        src/connectors/fixtures/demo_platform/listings.html): requesting "EUR" must
+        match all 3, requesting a different real currency must match none.
+        """
+        agent = RentalResearchAgent(self.db, output_dir=self.output_dir, filter_engine=FilterEngine())
+
+        matching = agent.run(SearchRequest(location="Example City", criteria={"currency": "EUR"}))
+        self.assertEqual(len(matching.apartments), 3)
+
+        non_matching = agent.run(SearchRequest(location="Example City", criteria={"currency": "USD"}))
+        self.assertEqual(len(non_matching.apartments), 0)
+
+    def test_property_type_filter_now_discriminates_against_enriched_demo_data(self) -> None:
+        """Same rationale as the currency test above — the fixture's 3 listings are
+        now 2 "apartment" and 1 "studio" (see the same fixture file), so
+        `PropertyTypeFilter` can now tell them apart instead of excluding everything.
+        """
+        agent = RentalResearchAgent(self.db, output_dir=self.output_dir, filter_engine=FilterEngine())
+
+        apartments_only = agent.run(SearchRequest(location="Example City", criteria={"property_type": "apartment"}))
+        self.assertEqual(len(apartments_only.apartments), 2)
+
+        studios_only = agent.run(SearchRequest(location="Example City", criteria={"property_type": "studio"}))
+        self.assertEqual(len(studios_only.apartments), 1)
+        self.assertEqual(studios_only.apartments[0].property_type, "studio")
+
+    def test_walking_distance_filter_discriminates_once_a_curated_reference_point_exists(self) -> None:
+        """Real coordinates alone (v2.6 Milestone 2.6.2) are not sufficient for
+        `WalkingDistanceFilter` to discriminate — `walking_distance.py` also needs a
+        curated `city_center` reference point for the search location, same as
+        `tests/core/test_geo_engine_integration.py` already proves for the geo
+        engine. Seeding one here at exactly `demo-001`'s coordinates gives a real,
+        computable proximity-score gradient across the fixture's 3 listings (their
+        real coordinates are ~0 / ~0.54 / ~1.32 km away — see
+        src/connectors/fixtures/demo_platform/listings.html), so a 0.9 minimum score
+        keeps only the closest listing instead of excluding or admitting all 3.
+        """
+        with self.db.transaction() as conn:
+            reference_data_repository.upsert_knowledge_entry(
+                conn,
+                KnowledgeEntry(
+                    id=None, category="city_center", key="Example City",
+                    value_json=json.dumps({"latitude": 39.4790, "longitude": -0.3500}),
+                    source="manual", updated_at=datetime.now(timezone.utc),
+                ),
+            )
+
+        agent = RentalResearchAgent(self.db, output_dir=self.output_dir, filter_engine=FilterEngine())
+        result = agent.run(SearchRequest(location="Example City", criteria={"walking_distance": 0.9}))
+
+        self.assertEqual(len(result.apartments), 1)
+        self.assertEqual(result.apartments[0].platform_listing_id, "demo-001")
+
+    def test_public_transport_time_filter_discriminates_once_a_curated_reference_point_exists(self) -> None:
+        """Same rationale as the walking_distance test above, for
+        `PublicTransportTimeFilter` — `public_transport.py` needs its own curated
+        `public_transport` reference stop, not `city_center`.
+        """
+        with self.db.transaction() as conn:
+            reference_data_repository.upsert_knowledge_entry(
+                conn,
+                KnowledgeEntry(
+                    id=None, category="public_transport", key="Example City",
+                    value_json=json.dumps(
+                        {"latitude": 39.4790, "longitude": -0.3500, "stop_name": "Example City Central Stop"}
+                    ),
+                    source="manual", updated_at=datetime.now(timezone.utc),
+                ),
+            )
+
+        agent = RentalResearchAgent(self.db, output_dir=self.output_dir, filter_engine=FilterEngine())
+        result = agent.run(SearchRequest(location="Example City", criteria={"public_transport_time": 0.9}))
+
+        self.assertEqual(len(result.apartments), 1)
+        self.assertEqual(result.apartments[0].platform_listing_id, "demo-001")
 
 
 if __name__ == "__main__":

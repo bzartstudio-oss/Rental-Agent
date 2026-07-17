@@ -22,13 +22,13 @@
       "room_type": "private_room",
       "number_of_rooms": 1,
       "number_of_flatmates": null,
-      "_comment": "property_type is left null on purpose: demo connector fixtures never populate Apartment.property_type in this release, so a pilot search that constrains on it will silently return zero demo-connector results (docs/33 Known Gaps item 3). Set it only when RentCast is the active connector."
+      "_comment": "property_type is left null (no preference) so this example doesn't accidentally constrain results to one type. Since v2.6 the demo connectors do populate Apartment.property_type (apartment/studio/house across the fixtures) alongside RentCast, so a real value here is now safe to set if you want to narrow results."
     },
     "budget": {
       "currency": null,
       "min_price": 900,
       "max_price": 2700,
-      "_comment": "min_price/max_price cover the actual demo connector fixture price range (950-2600) — see docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md, which found the previous example range (350-750) returned zero results. currency is left null (no preference) because demo connectors never populate Apartment.currency; setting a currency here would zero out every demo result the same way property_type does above."
+      "_comment": "min_price/max_price cover the actual demo connector fixture price range (950-2600) — see docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md, which found the previous example range (350-750) returned zero results. currency is left null (no preference) so this example doesn't accidentally constrain results to one code. Since v2.6 the demo connectors do populate Apartment.currency (EUR across the fixtures) alongside RentCast, so 'EUR' is now a safe value to set here if you want to narrow results."
     },
     "availability": {
       "availability_date_from": "2026-09-01",
@@ -40,7 +40,7 @@
       "walking_distance": null,
       "public_transport_time": null,
       "estimate": true,
-      "_comment": "0.0-1.0 normalized proximity score toward the destination above, not literal walking/transit minutes. Left null (no preference) because demo connector apartments have no coordinates at all, so any threshold value here excludes every demo result, not just an unrealistic one — see docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md finding #3. Set a real 0.0-1.0 value only when using a connector that populates coordinates (currently RentCast only)."
+      "_comment": "0.0-1.0 normalized proximity score toward the destination above, not literal walking/transit minutes. Left null (no preference) here: since v2.6 the demo connectors do populate apartment coordinates (see docs/41_Version_2.6_Planning.md Milestone 2.6.2), but the walking_distance/public_transport analyzers also need a curated 'city_center'/'public_transport' knowledge_entries reference point for the exact location you search (nothing seeds this automatically); without one, a threshold here is silently ignored (treated as no evidence) rather than excluding results. Set a real 0.0-1.0 value only once a reference point has been curated for your search's location."
     },
     "amenities": {
       "internet_included": true,

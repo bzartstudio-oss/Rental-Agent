@@ -53,6 +53,12 @@ class DemoPlatformTwoConnector(BaseConnector):
             address_raw=raw_record.select_one(".loc").get_text(strip=True),
             status="available",
             image_urls=image_urls,
+            # v2.6 Milestone 2.6.2 — same rationale as demo_platform.py, parsed
+            # from this fixture's own differently-named columns.
+            currency=raw_record.select_one(".currency").get_text(strip=True),
+            property_type=raw_record.select_one(".proptype").get_text(strip=True),
+            latitude=float(raw_record.select_one(".lat").get_text(strip=True)),
+            longitude=float(raw_record.select_one(".lng").get_text(strip=True)),
         )
 
     def connector_info(self) -> ConnectorMetadata:
@@ -65,4 +71,5 @@ class DemoPlatformTwoConnector(BaseConnector):
             supported_rental_types=["apartment"],
             supports_images=True,
             supports_availability=True,
+            supports_coordinates=True,
         )

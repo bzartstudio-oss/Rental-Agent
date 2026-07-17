@@ -57,6 +57,14 @@ class DemoPlatformConnector(BaseConnector):
             address_raw=raw_record.select_one(".address").get_text(strip=True),
             status="available",
             image_urls=image_urls,
+            # v2.6 Milestone 2.6.2 — the fixture now carries these too, so the
+            # currency/property_type filters and the geographic engine have real
+            # evidence to work with instead of always-None. See
+            # docs/41_Version_2.6_Planning.md.
+            currency=raw_record.select_one(".currency").get_text(strip=True),
+            property_type=raw_record.select_one(".property_type").get_text(strip=True),
+            latitude=float(raw_record.select_one(".latitude").get_text(strip=True)),
+            longitude=float(raw_record.select_one(".longitude").get_text(strip=True)),
         )
 
     def connector_info(self) -> ConnectorMetadata:
@@ -69,4 +77,5 @@ class DemoPlatformConnector(BaseConnector):
             supported_rental_types=["apartment"],
             supports_images=True,
             supports_availability=True,
+            supports_coordinates=True,
         )

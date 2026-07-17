@@ -125,7 +125,7 @@ class CurrencyFilter(BaseFilter):
     def metadata(self) -> FilterMetadata:
         return FilterMetadata(
             key=self.key, display_name="Currency", category="price", value_type="string",
-            description="Matches apartments priced in the given ISO currency code (e.g. USD). Populated by RentCast; demo connectors leave it unset.",
+            description="Matches apartments priced in the given ISO currency code (e.g. USD). Populated by RentCast and (since v2.6) the demo connectors.",
         )
 
 
@@ -144,7 +144,7 @@ class PropertyTypeFilter(BaseFilter):
     def metadata(self) -> FilterMetadata:
         return FilterMetadata(
             key=self.key, display_name="Property Type", category="property", value_type="string",
-            description="Matches apartments of the given property type (e.g. apartment, house, condo). Populated by RentCast; demo connectors leave it unset.",
+            description="Matches apartments of the given property type (e.g. apartment, house, condo). Populated by RentCast and (since v2.6) the demo connectors.",
         )
 
 

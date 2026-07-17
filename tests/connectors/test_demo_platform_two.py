@@ -63,6 +63,27 @@ class DemoPlatformTwoConnectorTests(unittest.TestCase):
         self.assertEqual(loft.address_raw, "88 Second Avenue, Example City")
         self.assertEqual(len(loft.image_urls), 1)
 
+    def test_currency_property_type_and_coordinates_are_parsed(self) -> None:
+        """v2.6 Milestone 2.6.2 — see docs/41_Version_2.6_Planning.md. This fixture
+        uses its own differently-named table columns (`.currency`/`.proptype`/
+        `.lat`/`.lng`), proving the connector abstraction isolates this platform's
+        markup shape the same way it already does for every other field.
+        """
+        result = self._search()
+        listings = {listing.platform_listing_id: listing for listing in result.listings}
+
+        for listing in listings.values():
+            self.assertEqual(listing.currency, "EUR")
+            self.assertIsInstance(listing.property_type, str)
+            self.assertTrue(listing.property_type)
+            self.assertIsInstance(listing.latitude, float)
+            self.assertIsInstance(listing.longitude, float)
+
+        self.assertEqual(listings["alt-002"].property_type, "house")
+        self.assertEqual(listings["alt-001"].property_type, "apartment")
+        self.assertEqual(listings["alt-001"].latitude, 39.4750)
+        self.assertEqual(listings["alt-001"].longitude, -0.3480)
+
 
 if __name__ == "__main__":
     unittest.main()

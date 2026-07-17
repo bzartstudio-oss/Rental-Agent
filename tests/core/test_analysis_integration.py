@@ -67,9 +67,13 @@ class AnalysisIntegrationTests(unittest.TestCase):
                 self.assertEqual(fetched.current_price, apartment.current_price)
 
     def test_no_evidence_by_default_means_nothing_is_persisted(self) -> None:
-        """No coordinates, no curated knowledge_entries for "Example City" — every
-        analyzer should honestly report no evidence, and nothing gets written to
-        apartment_analysis_metrics (see src/analysis/analysis_service.py).
+        """No curated knowledge_entries for "Example City" — even though the demo
+        fixture's apartments carry real coordinates (v2.6 Milestone 2.6.2), the
+        walking_distance/public_transport analyzers also need a curated
+        `city_center`/`public_transport` reference point for the search location,
+        which nothing seeds automatically. Every analyzer should honestly report no
+        evidence, and nothing gets written to apartment_analysis_metrics (see
+        src/analysis/analysis_service.py).
         """
         request = SearchRequest(location="Example City")
         result = self.agent.run(request)

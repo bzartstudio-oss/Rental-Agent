@@ -71,6 +71,26 @@ class DemoPlatformConnectorTests(unittest.TestCase):
         self.assertEqual(studio.address_raw, "45 Sample Avenue, Example City")
         self.assertTrue(studio.url.startswith("https://"))
 
+    def test_currency_property_type_and_coordinates_are_parsed(self) -> None:
+        """v2.6 Milestone 2.6.2 — see docs/41_Version_2.6_Planning.md. Before this,
+        the fixture never carried these fields at all, so every demo apartment's
+        `currency`/`property_type`/`latitude`/`longitude` was always `None`.
+        """
+        result = self._search()
+        listings = {listing.platform_listing_id: listing for listing in result.listings}
+
+        for listing in listings.values():
+            self.assertEqual(listing.currency, "EUR")
+            self.assertIsInstance(listing.property_type, str)
+            self.assertTrue(listing.property_type)
+            self.assertIsInstance(listing.latitude, float)
+            self.assertIsInstance(listing.longitude, float)
+
+        self.assertEqual(listings["demo-002"].property_type, "studio")
+        self.assertEqual(listings["demo-001"].property_type, "apartment")
+        self.assertEqual(listings["demo-001"].latitude, 39.4790)
+        self.assertEqual(listings["demo-001"].longitude, -0.3500)
+
     def test_image_urls_resolve_to_real_existing_files(self) -> None:
         result = self._search()
 

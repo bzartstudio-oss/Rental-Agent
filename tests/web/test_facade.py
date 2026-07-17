@@ -10,6 +10,7 @@ import unittest
 
 from src.discovery.automatic import service as discovery_service
 from src.discovery.automatic.models import PlatformCandidate, PlatformStatus
+from src.monitoring import service as monitoring_service
 from src.web.constants import TERMINAL_JOB_STATUSES
 from src.web.error_handler import WebNotFoundError, WebValidationError
 from src.web.facade import WebServiceFacade
@@ -158,6 +159,23 @@ class SavedSearchTests(unittest.TestCase):
             facade = WebServiceFacade(app.extensions["web_dependencies"])
             with self.assertRaises(WebValidationError):
                 facade.create_saved_search(name="", location="Example City", criteria={}, profile_id="p1")
+
+    def test_create_rejects_a_duplicate_name(self) -> None:
+        """v2.6 Milestone 2.6.5 — see docs/41_Version_2.6_Planning.md. The pilot
+        session created two saved searches both named "pilot-valencia-01" with no
+        warning; this must now raise a WebValidationError (the same exception type
+        the missing-name check above already raises), not create a second one.
+        """
+        with web_test_app() as (app, db, tmp):
+            facade = WebServiceFacade(app.extensions["web_dependencies"])
+            facade.create_saved_search(name="Watch", location="Example City", criteria={}, profile_id="p1")
+            with self.assertRaises(WebValidationError):
+                facade.create_saved_search(name="Watch", location="Example City", criteria={}, profile_id="p1")
+            with self.assertRaises(WebValidationError):
+                facade.create_saved_search(name="  watch  ", location="Example City", criteria={}, profile_id="p1")
+
+            with db.transaction() as conn:
+                self.assertEqual(len(monitoring_service.get_all_saved_searches(conn)), 1)
 
     def test_get_unknown_saved_search_raises_not_found(self) -> None:
         with web_test_app() as (app, db, tmp):

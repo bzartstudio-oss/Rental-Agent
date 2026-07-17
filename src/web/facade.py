@@ -267,6 +267,17 @@ class WebServiceFacade:
             raise WebValidationError("Saved search name is required")
         if not location or not location.strip():
             raise WebValidationError("Location is required")
+        # v2.6 Milestone 2.6.5 — pre-checked here too (not just in
+        # MonitoringEngine.create_saved_search) so a duplicate name surfaces as a
+        # WebValidationError (a form flash message) rather than an uncaught
+        # MonitoringValidationError, matching the name/location checks above.
+        with self._db.transaction() as conn:
+            name_taken = any(
+                existing.name.strip().lower() == name.strip().lower()
+                for existing in monitoring_service.get_all_saved_searches(conn)
+            )
+        if name_taken:
+            raise WebValidationError(f"A saved search named {name.strip()!r} already exists. Choose a different name.")
         saved_search = self._deps.monitoring_engine.create_saved_search(
             self._db, name, {"location": location, "criteria": criteria}, profile_id=profile_id,
             description=description, monitoring_policy=MonitoringPolicy(),

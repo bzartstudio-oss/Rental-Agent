@@ -85,6 +85,17 @@ class MonitoringEngine:
         if not request.get("location"):
             raise MonitoringValidationError("SavedSearchVersion.request must include a 'location'")
 
+        # v2.6 Milestone 2.6.5 — enforced only here, at creation time, never
+        # retroactively: existing saved searches that already share a name (e.g.
+        # from before this check existed) must keep reading and running fine.
+        with db.transaction() as conn:
+            name_taken = any(
+                existing.name.strip().lower() == name.strip().lower()
+                for existing in service.get_all_saved_searches(conn)
+            )
+        if name_taken:
+            raise MonitoringValidationError(f"A saved search named {name!r} already exists. Choose a different name.")
+
         now = now or datetime.now(timezone.utc)
         saved_search_id = str(uuid.uuid4())
         policy = monitoring_policy or self._configuration.default_policy

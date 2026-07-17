@@ -17,7 +17,8 @@ from pathlib import Path
 
 from src.discovery import platform_registry
 from src.monitoring import MonitoringEngine, MonitoringPolicy, service as monitoring_service
-from src.monitoring.models import MonitoringRunStatus
+from src.monitoring.exceptions import MonitoringValidationError
+from src.monitoring.models import MonitoringRunStatus, SavedSearch
 from src.storage.database import Database
 from src.storage.models import Platform
 from tests.support import isolated_collectors
@@ -76,6 +77,48 @@ class MonitoringEngineTests(unittest.TestCase):
         self.engine.set_enabled(self.db, self.saved_search.saved_search_id, True)
         with self.db.transaction() as conn:
             self.assertTrue(monitoring_service.get_saved_search(conn, self.saved_search.saved_search_id).enabled)
+
+    def test_create_rejects_an_exact_duplicate_name(self) -> None:
+        """v2.6 Milestone 2.6.5 — see docs/41_Version_2.6_Planning.md. `setUp`
+        already created "Example City Apartments"; a second saved search with the
+        same name must be rejected, not silently allowed the way the pilot session
+        found (two saved searches both named "pilot-valencia-01" with no warning).
+        """
+        with self.assertRaises(MonitoringValidationError):
+            self.engine.create_saved_search(
+                self.db, "Example City Apartments", {"location": "Example City", "criteria": {}},
+            )
+
+    def test_create_rejects_a_duplicate_name_regardless_of_case_or_surrounding_whitespace(self) -> None:
+        with self.assertRaises(MonitoringValidationError):
+            self.engine.create_saved_search(
+                self.db, "  example city apartments  ", {"location": "Example City", "criteria": {}},
+            )
+
+    def test_create_allows_a_genuinely_different_name(self) -> None:
+        second = self.engine.create_saved_search(
+            self.db, "A Completely Different Search", {"location": "Example City", "criteria": {}},
+        )
+        self.assertNotEqual(second.saved_search_id, self.saved_search.saved_search_id)
+
+    def test_pre_existing_duplicate_named_saved_searches_still_read_fine(self) -> None:
+        """Enforcement is creation-time only, never retroactive (see
+        docs/41_Version_2.6_Planning.md Milestone 2.6.5's backward-compatibility
+        requirement) — a saved search that already shares a name (inserted here by
+        writing directly to storage, bypassing the engine, the same way real
+        pre-2.6.5 duplicate data would have gotten there) must keep reading fine.
+        """
+        duplicate = SavedSearch(
+            saved_search_id="legacy-duplicate", name=self.saved_search.name, current_version=1,
+            enabled=True, created_at=_NOW, updated_at=_NOW, profile_id=None, description=None,
+        )
+        with self.db.transaction() as conn:
+            monitoring_service.record_saved_search(conn, duplicate)
+
+        with self.db.transaction() as conn:
+            all_saved_searches = monitoring_service.get_all_saved_searches(conn)
+        names = [s.name for s in all_saved_searches]
+        self.assertEqual(names.count(self.saved_search.name), 2)
 
     def test_run_now_produces_a_completed_run_with_traceable_events(self) -> None:
         run = self.engine.run_now(self.db, self.saved_search.saved_search_id)

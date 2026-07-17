@@ -40,8 +40,8 @@
     <h2>Image gallery</h2>
     {% if images %}
       <div class="grid grid-3">
-      {% for image in images if image.is_current %}
-        <img src="{{ image.source_url }}" alt="Listing photo {{ loop.index }} of {{ apartment.title }}">
+      {% for image, image_url in images_with_urls if image.is_current %}
+        <img src="{{ image_url }}" alt="Listing photo {{ loop.index }} of {{ apartment.title }}">
       {% endfor %}
       </div>
     {% else %}

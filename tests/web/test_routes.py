@@ -77,6 +77,59 @@ class SearchResultsPageTests(unittest.TestCase):
             self.assertIn("Original listing", resp.get_data(as_text=True))
 
 
+class ApartmentImageServingTests(unittest.TestCase):
+    """A demo/fixture connector's `ApartmentImage.source_url` is a `file://`
+    path (see `src/connectors/demo_platform.py`) — no real browser will ever
+    load that from an `http://` page (and this platform's own CSP already
+    assumes same-origin image serving, see `security.py`). The detail page
+    must render the already-downloaded local copy through a real same-origin
+    route instead of the raw `file://` source_url.
+    """
+
+    def test_detail_page_never_renders_a_file_url_for_images(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            job = _run_a_real_search(client, db)
+            resp = client.get(f"/search/results/{job['result_reference']}")
+            apartment_id = re.search(r"/apartments/([a-f0-9\-]+)", resp.get_data(as_text=True)).group(1)
+            resp = client.get(f"/apartments/{apartment_id}")
+            html = resp.get_data(as_text=True)
+            self.assertNotIn('src="file://', html)
+
+    def test_apartment_media_route_serves_the_downloaded_image_bytes(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            job = _run_a_real_search(client, db)
+            resp = client.get(f"/search/results/{job['result_reference']}")
+            apartment_id = re.search(r"/apartments/([a-f0-9\-]+)", resp.get_data(as_text=True)).group(1)
+            resp = client.get(f"/apartments/{apartment_id}")
+            html = resp.get_data(as_text=True)
+            media_url = re.search(r'src="(/apartments/[a-f0-9\-]+/media/[^"]+)"', html)
+            self.assertIsNotNone(media_url, "no same-origin media URL found in the rendered image gallery")
+            image_resp = client.get(media_url.group(1))
+            self.assertEqual(image_resp.status_code, 200)
+            self.assertGreater(len(image_resp.get_data()), 0)
+            self.assertTrue(image_resp.content_type.startswith("image/"))
+
+    def test_media_route_rejects_path_traversal(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            job = _run_a_real_search(client, db)
+            resp = client.get(f"/search/results/{job['result_reference']}")
+            apartment_id = re.search(r"/apartments/([a-f0-9\-]+)", resp.get_data(as_text=True)).group(1)
+            resp = client.get(f"/apartments/{apartment_id}/media/..%2F..%2F..%2Fetc%2Fpasswd")
+            self.assertEqual(resp.status_code, 404)
+
+    def test_media_route_404s_for_unknown_filename(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            job = _run_a_real_search(client, db)
+            resp = client.get(f"/search/results/{job['result_reference']}")
+            apartment_id = re.search(r"/apartments/([a-f0-9\-]+)", resp.get_data(as_text=True)).group(1)
+            resp = client.get(f"/apartments/{apartment_id}/media/does-not-exist.png")
+            self.assertEqual(resp.status_code, 404)
+
+
 class JobPageRefreshTests(unittest.TestCase):
     def test_job_status_survives_a_simulated_page_refresh(self) -> None:
         with web_test_app() as (app, db, tmp):

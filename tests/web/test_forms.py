@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from werkzeug.datastructures import MultiDict
 
 from src.web.error_handler import WebValidationError
+from src.web.forms.config_loader import parse_config_file
 from src.web.forms.discovery_form import parse_discovery_form
 from src.web.forms.feedback_form import parse_feedback_form
 from src.web.forms.notification_form import parse_notification_preference_form
@@ -86,6 +88,92 @@ class SearchFormTests(unittest.TestCase):
         form = MultiDict({"city": "Valencia", "max_result_count": "999999"})
         with self.assertRaises(WebValidationError):
             parse_search_form(form)
+
+
+class ConfigLoaderTests(unittest.TestCase):
+    """v2.6 Milestone 2.6.3 — see docs/41_Version_2.6_Planning.md and
+    src/web/forms/config_loader.py's own docstring. `parse_config_file()`
+    must reuse `parse_search_form()`'s validation, not reimplement it — every
+    test here proves that reuse, not new validation logic.
+    """
+
+    def _valid_config(self, **overrides) -> dict:
+        config = {
+            "search": {
+                "location": {"country": "Spain", "region": None, "city": "Valencia", "postal_area": None},
+                "budget": {"currency": None, "min_price": 900, "max_price": 2700},
+                "property_and_room": {"property_type": None, "room_type": None, "number_of_rooms": None, "number_of_flatmates": None},
+                "proximity_preferences": {"walking_distance": None, "public_transport_time": None},
+                "amenities": {
+                    "internet_included": True, "furnished": False, "private_bathroom": None,
+                    "air_conditioning": None, "heating": None, "elevator": None, "pets_allowed": None,
+                },
+                "feedback_mode": "suggested",
+                "connectors": {"allowed_platform_ids": ["demo_platform"]},
+                "result_limits": {"max_result_count": 10},
+            }
+        }
+        config["search"].update(overrides)
+        return config
+
+    def test_valid_config_produces_the_same_shape_parse_search_form_does(self) -> None:
+        fields = parse_config_file(json.dumps(self._valid_config()))
+        self.assertIn("Valencia", fields["location"])
+        self.assertIn("Spain", fields["location"])
+        self.assertEqual(fields["criteria"]["min_price"], 900.0)
+        self.assertEqual(fields["criteria"]["max_price"], 2700.0)
+        self.assertTrue(fields["criteria"]["internet_included"])
+        self.assertNotIn("furnished", fields["criteria"])  # False -> "no preference", not an explicit exclusion
+        self.assertEqual(fields["allowed_platform_ids"], ["demo_platform"])
+        self.assertEqual(fields["feedback_mode"], "suggested")
+
+    def test_number_of_rooms_and_room_type_are_never_translated(self) -> None:
+        """Regression for a real defect found while verifying this milestone:
+        `property_and_room.number_of_rooms` looks like it should map to the
+        registered `number_of_rooms` filter, but that filter is an exact
+        total-bedroom-count match, not "how many rooms the pilot user needs"
+        — auto-mapping it produced zero results against every demo fixture
+        apartment (see src/web/forms/config_loader.py's module docstring).
+        """
+        config = self._valid_config(
+            property_and_room={"property_type": None, "room_type": "private_room", "number_of_rooms": 1, "number_of_flatmates": None},
+        )
+        fields = parse_config_file(json.dumps(config))
+        self.assertNotIn("number_of_rooms", fields["criteria"])
+        self.assertNotIn("room_type", fields["criteria"])
+
+    def test_malformed_json_is_rejected(self) -> None:
+        with self.assertRaises(WebValidationError):
+            parse_config_file("{not valid json")
+
+    def test_a_json_array_instead_of_an_object_is_rejected(self) -> None:
+        with self.assertRaises(WebValidationError):
+            parse_config_file("[1, 2, 3]")
+
+    def test_missing_search_key_is_rejected(self) -> None:
+        with self.assertRaises(WebValidationError):
+            parse_config_file(json.dumps({"not_search": {}}))
+
+    def test_config_missing_a_location_is_rejected_the_same_way_a_form_would_be(self) -> None:
+        config = self._valid_config(location={"country": None, "region": None, "city": None, "postal_area": None})
+        with self.assertRaises(WebValidationError):
+            parse_config_file(json.dumps(config))
+
+    def test_out_of_range_price_is_rejected_the_same_way_a_form_would_be(self) -> None:
+        config = self._valid_config(budget={"currency": None, "min_price": -100, "max_price": 2700})
+        with self.assertRaises(WebValidationError):
+            parse_config_file(json.dumps(config))
+
+    def test_bytes_content_is_accepted(self) -> None:
+        fields = parse_config_file(json.dumps(self._valid_config()).encode("utf-8"))
+        self.assertIn("Valencia", fields["location"])
+
+    def test_the_shipped_pilot_example_config_loads_without_error(self) -> None:
+        from pathlib import Path
+
+        config_path = Path(__file__).resolve().parents[2] / "config" / "pilot.example.json"
+        fields = parse_config_file(config_path.read_text(encoding="utf-8"))
+        self.assertTrue(fields["location"])
 
 
 class DiscoveryFormTests(unittest.TestCase):

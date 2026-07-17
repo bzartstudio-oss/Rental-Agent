@@ -9,6 +9,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from src.web.application import get_facade
 from src.web.constants import DEFAULT_PROFILE_ID
 from src.web.error_handler import WebValidationError
+from src.web.forms.config_loader import parse_config_file
 from src.web.forms.search_form import parse_search_form
 from src.web.presenters.apartment_presenter import present_apartment_card, present_missing_data_summary
 from src.web.presenters.serialization import to_jsonable
@@ -29,9 +30,20 @@ def new_search():
 
 @blueprint.route("/new", methods=["POST"])
 def submit_search():
+    """v2.6 Milestone 2.6.3 — an uploaded `config_file` (matching
+    `config/pilot.example.json`'s shape) is an *additional*, optional way to
+    reach the exact same `fields` this route has always built from
+    `request.form` — every other field on the New Search form is still read
+    and validated exactly as before when no file is uploaded. See
+    src/web/forms/config_loader.py.
+    """
     facade = get_facade()
+    config_file = request.files.get("config_file")
     try:
-        fields = parse_search_form(request.form)
+        if config_file is not None and config_file.filename:
+            fields = parse_config_file(config_file.read())
+        else:
+            fields = parse_search_form(request.form)
     except WebValidationError as exc:
         flash(str(exc), "error")
         return redirect(url_for("search.new_search"))

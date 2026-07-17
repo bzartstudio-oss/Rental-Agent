@@ -7,11 +7,13 @@ completed search — never SQL in a route, only facade calls.
 
 from __future__ import annotations
 
+import io
 import re
 import time
 import unittest
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from src.geography.history import record_geo_enrichment
 from src.geography.models import GeoEnrichment, GeoResult, TravelMode
@@ -20,6 +22,8 @@ from src.storage.models import Apartment
 from src.web.constants import TERMINAL_JOB_STATUSES
 from src.web.jobs import service as jobs_service
 from tests.web.helpers import csrf_token_from, web_test_app
+
+_PILOT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "pilot.example.json"
 
 
 def _run_a_real_search(client, db):
@@ -225,6 +229,55 @@ class JobPageRefreshTests(unittest.TestCase):
                 if status_resp.get_json()["job"]["status"] in TERMINAL_JOB_STATUSES:
                     break
                 time.sleep(0.2)
+
+
+class ConfigFileUploadTests(unittest.TestCase):
+    """v2.6 Milestone 2.6.3 — see docs/41_Version_2.6_Planning.md and
+    src/web/forms/config_loader.py. Proves the real, shipped
+    config/pilot.example.json can be uploaded through the real `/search/new`
+    route and drive a real demo search — not just that the loader function
+    parses it in isolation (already proven in tests/web/test_forms.py).
+    """
+
+    def test_uploading_the_shipped_pilot_config_starts_a_real_search(self) -> None:
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            resp = client.get("/search/new")
+            token = csrf_token_from(resp.get_data(as_text=True))
+
+            config_bytes = _PILOT_CONFIG_PATH.read_bytes()
+            resp = client.post(
+                "/search/new",
+                data={"csrf_token": token, "config_file": (io.BytesIO(config_bytes), "pilot.example.json")},
+                content_type="multipart/form-data",
+                follow_redirects=False,
+            )
+            self.assertEqual(resp.status_code, 302, resp.get_data(as_text=True)[:1000])
+            job_url = resp.headers["Location"]
+
+            deadline = time.monotonic() + 30
+            job = None
+            while time.monotonic() < deadline:
+                resp = client.get(job_url, headers={"Accept": "application/json"})
+                job = resp.get_json()["job"]
+                if job["status"] in TERMINAL_JOB_STATUSES:
+                    break
+                time.sleep(0.2)
+            self.assertIn(job["status"], ("completed", "partial"), job)
+
+            resp = client.get(f"/search/results/{job['result_reference']}")
+            html = resp.get_data(as_text=True)
+            apartment_ids = re.findall(r"/apartments/([a-f0-9\-]+)", html)
+            self.assertTrue(apartment_ids, "uploading the shipped pilot config produced zero results")
+
+    def test_submitting_without_a_config_file_still_uses_the_manual_form_fields(self) -> None:
+        """Regression: the existing manual-entry path (no file uploaded) must
+        keep working exactly as before — the config-file upload is additive.
+        """
+        with web_test_app() as (app, db, tmp):
+            client = app.test_client()
+            job = _run_a_real_search(client, db)
+            self.assertIn(job["status"], ("completed", "partial"))
 
 
 if __name__ == "__main__":

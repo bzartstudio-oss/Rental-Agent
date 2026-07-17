@@ -109,24 +109,27 @@ Open `http://127.0.0.1:5000/` in a browser. Bound to localhost only unless
 
 ## 9. Loading the Pilot Configuration
 
-`config/pilot.example.json` is a **reference document, not an importable
-file** — this release has no config-file loader. Open it and manually enter
-its values into the web dashboard's "New Search" form (or the matching
-`--flags` on `python -m src.ui.cli`):
+Since v2.6 Milestone 2.6.3 (docs/41_Version_2.6_Planning.md), the dashboard's
+New Search form has a "Load from a config file" file upload at the top —
+upload `config/pilot.example.json` (or your own copy matching its shape)
+directly and most of the fields below fill in automatically. See
+`src/web/forms/config_loader.py` for exactly what is and isn't translated.
 
-- Location fields → `country`/`region`/`city`/`postal_area`
-- `search.budget` → min/max price fields
-- `search.proximity_preferences` → the walking-distance/public-transport
-  filter fields (remember: `0.0`-`1.0`, not minutes)
-- `search.amenities` → the matching amenity checkboxes
-- `search.ranking.ranking_profile` → the Ranking Profile dropdown
-- `search.feedback_mode` → the Feedback Mode dropdown
-- `search.connectors.allowed_platform_ids` → check only `demo_platform` and
-  `demo_platform_two`
-- Leave "Enable Monitoring" and any notification preference unchecked
-  (monitoring/notifications ship disabled by default for pilot sessions —
-  see sections 15 and the mission's own instruction not to enable them
-  automatically)
+Automatically loaded from the file: location fields, budget (min/max
+price), proximity preferences, amenities, feedback mode, and
+`connectors.allowed_platform_ids`.
+
+Still entered by hand, because there is no reliable automatic mapping (see
+`config_loader.py`'s own docstring for why each one is skipped rather than
+guessed): `destination`, `property_and_room.room_type`/`.number_of_rooms`,
+`search.ranking.ranking_profile` (use the Ranking Profile dropdown),
+"Enable Monitoring," and any notification preference — leave the last two
+unchecked (monitoring/notifications ship disabled by default for pilot
+sessions — see sections 15 and the mission's own instruction not to enable
+them automatically).
+
+The CLI (`python -m src.ui.cli`) has no config-file loader — its own
+`--flags` still need to be entered manually.
 
 ## 10. Running the Valencia Search
 

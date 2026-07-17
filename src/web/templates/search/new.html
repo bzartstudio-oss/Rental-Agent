@@ -3,8 +3,14 @@
 {% block title %}New Search — Rental Intelligence Platform{% endblock %}
 {% block content %}
 <h1>New Search</h1>
-<form method="post" action="{{ url_for('search.submit_search') }}">
+<form method="post" action="{{ url_for('search.submit_search') }}" enctype="multipart/form-data">
   {{ csrf_field() }}
+
+  <fieldset>
+    <legend>Load from a config file (optional)</legend>
+    <p><small>Upload a JSON file matching config/pilot.example.json's shape to fill in the fields below automatically — see docs/41_Version_2.6_Planning.md Milestone 2.6.3. Leave empty to fill in the form manually as usual.</small></p>
+    <div class="field"><label for="config_file">Config file (.json)</label><input type="file" id="config_file" name="config_file" accept="application/json,.json"></div>
+  </fieldset>
 
   <fieldset>
     <legend>Location</legend>

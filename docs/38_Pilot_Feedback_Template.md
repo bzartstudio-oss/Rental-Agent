@@ -13,7 +13,7 @@ standard.
   profile-id/label used throughout the session, per docs/37 section 12-13)_
 - **Date**: _(YYYY-MM-DD)_
 - **Pilot operator**: _(name or handle)_
-- **Platform version tested**: 2.5.0-rc1
+- **Platform version tested**: _(e.g. `2.5.0-rc2` — check `VERSION` or `git describe --tags`)_
 - **Interface used**: _(web dashboard / CLI / both)_
 
 ## Search Details
@@ -79,3 +79,4 @@ standard.
 
 - [37_Pilot_Operations_Guide.md](37_Pilot_Operations_Guide.md)
 - [33_Release_Candidate_Acceptance.md](33_Release_Candidate_Acceptance.md)
+- [38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md](38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md) — a completed example of this template

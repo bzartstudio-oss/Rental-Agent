@@ -4,6 +4,49 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.5.0-rc2] — 2026-07-17 — Pilot Fix: Browser Image Serving
+
+A pilot-driven follow-up to `v2.5.0-rc1` (which remains unchanged and
+immutable — this is a new commit and a new tag, not a rewrite of the
+existing one). Branch: `release/v2.5-rc1` (still not merged to `main`/
+`platform-v1`).
+
+### Fixed
+- Apartment detail page images never rendered in a real browser for
+  `demo_platform`/`demo_platform_two` results — `ApartmentImage.source_url`
+  is a `file://` path for fixture-based connectors, which no browser will
+  load from an `http://` page. Added a same-origin
+  `/apartments/<id>/media/<filename>` route serving the already-downloaded
+  `ApartmentImage.local_path` through the existing `WebSecurity.safe_join()`
+  path-traversal guard; the detail template now points at it instead of the
+  raw `source_url`. 4 new regression tests
+  (`tests/web/test_routes.py::ApartmentImageServingTests`).
+
+### Added
+- `docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md` — completed pilot
+  feedback from the controlled local pilot session that found the defect
+  above.
+- `RELEASE_NOTES_v2.5-rc2.md`, `release/v2.5.0-rc2-manifest.json`,
+  `docs/40_Tag_Readiness_v2.5.0-rc2.md`.
+
+### Known Limitations (Non-Blocking, Documented, Not Fixed This Release)
+- `config/pilot.example.json`'s example budget (350-750 EUR) returns zero
+  results against demo connector fixture prices (950-2600 EUR).
+- The `currency` filter always excludes demo-connector apartments (they
+  never populate `Apartment.currency`), the same category of gap as the
+  already-documented `property_type` limitation.
+- `walking_distance`/`public_transport_time` filters always exclude
+  demo-connector apartments, since those apartments have no coordinates at
+  all — a stronger version of the already-documented proximity-score gap.
+- Real monitoring runs against demo connectors can never produce a genuine
+  price/availability/new-match change event, at any number of repeated
+  runs, since demo fixtures are 100% static — refines the already-documented
+  "requires a second observation" gap.
+- The apartment detail page's geographic-analysis section renders a raw
+  Python dict repr (`{'distances': {}, 'nearby': {}}`) instead of a clean
+  "not available" message when no geo data exists — cosmetic only.
+- Duplicate saved-search names are allowed with no uniqueness warning.
+
 ## [2.5.0-rc1] — 2026-07-17 — Release Candidate Acceptance
 
 The Release Candidate Acceptance sprint: no new product features — this

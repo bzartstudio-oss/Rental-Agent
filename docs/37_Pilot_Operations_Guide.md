@@ -1,7 +1,7 @@
 # 37 — Pilot Operations Guide
 
 Version 2.5 Step 18. A step-by-step guide for a pilot operator running the
-Autonomous Rental Intelligence Platform v2.5.0-rc1 against the documented
+Autonomous Rental Intelligence Platform v2.5.0-rc2 (or later) against the documented
 Valencia reference scenario, using only commands and behavior that exist and
 are tested in this release. Every command below matches
 `docs/35_Installation_and_Operations.md` and the actual CLI/script argument
@@ -332,4 +332,6 @@ actually needed.
 - [35_Installation_and_Operations.md](35_Installation_and_Operations.md)
 - [38_Pilot_Feedback_Template.md](38_Pilot_Feedback_Template.md)
 - [39_Tag_Readiness_v2.5.0-rc1.md](39_Tag_Readiness_v2.5.0-rc1.md)
+- [40_Tag_Readiness_v2.5.0-rc2.md](40_Tag_Readiness_v2.5.0-rc2.md)
+- [38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md](38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md) — a completed example
 - [../config/pilot.example.json](../config/pilot.example.json)

@@ -1,0 +1,169 @@
+{
+  "version": "2.5.0-rc2",
+  "parent_commit": "6f464d7439d41ceaaca6ed28fe591c46aa38da64",
+  "rc1_tag_target_commit": "138c8743b7f6fe23a6f74bff0d47847752ed1316",
+  "rc1_immutable": true,
+  "branch": "release/v2.5-rc1",
+  "python_version": "3.13.14",
+  "release_date": "2026-07-17",
+  "note": "This manifest file's own git blob necessarily predates the commit that adds it, so it cannot self-report its own finalization commit hash without amending after the fact. The finalization commit hash is recorded in docs/40_Tag_Readiness_v2.5.0-rc2.md and is the commit the v2.5.0-rc2 tag points at. v2.5.0-rc1 (138c8743) is unchanged and remains a separate, valid, immutable tag.",
+  "changes_since_rc1": {
+    "fixed": [
+      "Apartment images never rendered in a real browser for demo_platform/demo_platform_two results (file:// source URLs blocked by browser security). Added a same-origin /apartments/<id>/media/<filename> route reusing the existing WebSecurity.safe_join() guard. Commit b013ad10440ff4ac76232309000af263833bb379."
+    ],
+    "added_documentation": [
+      "docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md (commit 6f464d7439d41ceaaca6ed28fe591c46aa38da64)"
+    ],
+    "not_changed": "Everything else from RC1 — same features, same architecture, same acceptance/security criteria. No new product features, no redesign."
+  },
+  "migrations": {
+    "count": 11,
+    "versions": [
+      "0001_v2_knowledge_engine.sql",
+      "0002_search_requests_created_at_index.sql",
+      "0003_analysis_engine_metrics.sql",
+      "0004_production_connector_fields.sql",
+      "0005_filter_execution_history.sql",
+      "0006_geo_enrichment_history.sql",
+      "0007_feedback_and_preferences.sql",
+      "0008_automatic_platform_discovery.sql",
+      "0009_continuous_monitoring.sql",
+      "0010_notification_delivery.sql",
+      "0011_web_dashboard.sql"
+    ],
+    "changed_since_rc1": false
+  },
+  "test_suite": {
+    "runner": "python -m unittest discover -s tests -t .",
+    "total_tests": 1312,
+    "result": "OK",
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "execution_time_seconds": 273.564,
+    "new_tests_since_rc1": 4,
+    "new_test_class": "tests/web/test_routes.py::ApartmentImageServingTests"
+  },
+  "health_check": {
+    "script": "scripts/health_check.py",
+    "checks_total": 13,
+    "checks_passing": 13,
+    "checks_warning": 0,
+    "checks_failing": 0
+  },
+  "image_route_security": {
+    "route": "/apartments/<apartment_id>/media/<filename>",
+    "valid_file_result": "200, correct content-type (e.g. image/png)",
+    "path_traversal_encoded_slash_result": "404",
+    "path_traversal_encoded_backslash_result": "404",
+    "missing_file_result": "404",
+    "path_leakage_in_error_response": "none (plain 404 template, no filesystem path disclosed)",
+    "guard_reused": "WebSecurity.safe_join() — same helper already used elsewhere in the web layer's security design; no new path-traversal logic invented",
+    "result": "PASS"
+  },
+  "acceptance": {
+    "document": "docs/33_Release_Candidate_Acceptance.md",
+    "journeys_passing": 6,
+    "result": "PASS",
+    "changed_since_rc1": false
+  },
+  "security": {
+    "document": "docs/34_Security_Acceptance.md",
+    "secret_scan": "clean (no API keys, passwords, SMTP credentials, webhook secrets, bearer tokens, or private keys found in tracked files)",
+    "result": "PASS",
+    "changed_since_rc1": false
+  },
+  "backup_restore": {
+    "tests_passing": 10,
+    "document": "tests/scripts/test_backup_restore.py",
+    "result": "PASS",
+    "changed_since_rc1": false
+  },
+  "pilot": {
+    "document": "docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md",
+    "workflows_completed": [
+      "health check", "backup", "dashboard search", "job progress", "ranked results",
+      "apartment detail", "original listing URLs", "images (fixed this cycle)",
+      "missing-data labels", "geographic analysis", "reports", "saved search",
+      "monitoring (run twice with real fixture changes)", "deduplication",
+      "removal threshold configuration", "notifications (console+file)",
+      "feedback actions (viewed/saved/shortlisted/rejected/manual_rating)",
+      "preference explanation", "discovery workflow", "system health", "JSON API (4 endpoints)"
+    ],
+    "defects_found": 1,
+    "defects_fixed": 1,
+    "non_blocking_findings": 6,
+    "result": "PASS"
+  },
+  "supported_execution_interfaces": [
+    "CLI (python -m src.ui.cli, monitoring_cli, notification_cli, feedback_cli, discovery_cli)",
+    "Web dashboard (Flask, server-rendered, localhost by default)",
+    "JSON API v1 (/api/v1/*, consumed by the same web dashboard's own JS and available to any local HTTP client)"
+  ],
+  "fixture_tested_capabilities": [
+    "Search pipeline (discovery, connectors, analysis, filtering, geo enrichment, ranking, reporting) against demo_platform/demo_platform_two",
+    "Automatic platform discovery against a fake page fetcher",
+    "Continuous monitoring and change detection against deterministic fixture reruns",
+    "Notification delivery (console/file channels) against synthetic and real pipeline-recorded events",
+    "Real user journeys A-F (tests/acceptance/)",
+    "Apartment image serving via the new same-origin media route (RC2)"
+  ],
+  "live_tested_capabilities": [
+    "Web dashboard and JSON API (real Flask app, real facade calls, real SQLite database)",
+    "CLI startup and search execution against real Playwright-rendered local fixture pages",
+    "Backup creation, checksum verification, and restore (real SQLite online backup API)",
+    "Installation health check against the real local environment",
+    "A full controlled local pilot session against the real running dashboard (RC2)"
+  ],
+  "production_provider_dependencies": [
+    "RentCast (requires RENTCAST_API_KEY; the one real, non-demo data connector)",
+    "Email notification channel (requires real SMTP credentials)",
+    "Webhook notification channel (requires a real webhook URL and signing secret)",
+    "Ollama AI provider (requires a locally running Ollama server; null/no-op provider is the default fallback)"
+  ],
+  "known_limitations": [
+    "walking_distance/public_transport_time filters are a normalized 0.0-1.0 proximity score, not literal minutes, AND demo connector apartments have no coordinates at all so any threshold excludes every demo result (refined from RC1's docs/33 Known Gaps #1)",
+    "A filter-value validation error surfaces as a job's error_summary string, not an immediate form-level 400 (docs/33 Known Gaps #2)",
+    "property_type filtering cannot be meaningfully exercised against demo connector fixtures; only RentCast populates that field (docs/33 Known Gaps #3)",
+    "The currency filter always excludes demo-connector apartments; they never populate Apartment.currency (same category as property_type gap; newly documented in RC2)",
+    "Real monitoring runs against demo connectors can never produce a genuine price/availability/new-match change event, at any number of repeated runs, since demo fixtures are 100% static (refined from RC1's docs/33 Known Gaps #4)",
+    "The geographic-analysis section renders a raw Python dict repr instead of a clean 'not available' message when no geo data exists (cosmetic; newly documented in RC2)",
+    "Duplicate saved-search names are allowed with no uniqueness warning (newly documented in RC2)",
+    "config/pilot.example.json's example budget (350-750 EUR) returns zero results against actual demo fixture prices (950-2600 EUR) (newly documented in RC2)",
+    "No commercial rental platform (Zillow, Apartments.com, Rightmove, Idealista, Fotocasa, ImmoScout24, etc.) has a real connector in this release",
+    "No config-file loader exists; config/pilot.example.json is a documented reference for manual entry into the web form or CLI flags"
+  ],
+  "included_documentation": [
+    "MASTER_SPEC.md",
+    "RELEASE_NOTES_v2.5-rc2.md",
+    "CHANGELOG.md",
+    "docs/33_Release_Candidate_Acceptance.md",
+    "docs/34_Security_Acceptance.md",
+    "docs/35_Installation_and_Operations.md",
+    "docs/36_Performance_Baseline.md",
+    "docs/37_Pilot_Operations_Guide.md",
+    "docs/38_Pilot_Feedback_Template.md",
+    "docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md",
+    "docs/39_Tag_Readiness_v2.5.0-rc1.md",
+    "docs/40_Tag_Readiness_v2.5.0-rc2.md"
+  ],
+  "document_checksums_sha256": {
+    "MASTER_SPEC.md": "663cab782ecb4ef074d3c1d2c7f805cce57856873e4598d667f41f7234e7c2cd",
+    "RELEASE_NOTES_v2.5-rc2.md": "183a28f5da6a4f632c9b077cb50b40c267f3fcfd47895f92062dae4e1316b271",
+    "CHANGELOG.md": "a577393736cd0366b5ec09143f17892b30a5d5998c9afb9e5b7aff6445e2666f",
+    "VERSION": "e9c1fb7b928a4dd28ece404c0d880ddd87d1701db8e0c25da1590a00e91d887e",
+    "docs/33_Release_Candidate_Acceptance.md": "c814bd28e00b6d7bda92c6d10de820ebe1e6efb29d3e3b2770337e090448b1ce",
+    "docs/34_Security_Acceptance.md": "24ab7e7c2abd54b5a686b20e276f4719f23cd91bf4cea791f5c8471c643e55c4",
+    "docs/35_Installation_and_Operations.md": "acc236598fb05b0284e59100461667e8ff934202e4bf504a32cf4ec9d6538f45",
+    "docs/36_Performance_Baseline.md": "1b44ef53b6ffcbbde93d9c4705be5ad3801cc3c12c3fe545ac40cb526054db20",
+    "docs/37_Pilot_Operations_Guide.md": "1ba72e8cb3e94e2d71f34aee839c0da43379dc4db09f7251f61c41dd584d5843",
+    "docs/38_Pilot_Feedback_Template.md": "9ba7d1f18a3bad53de1472bc2277bed0d808fc9c600e62605bc8c733f3c8866f",
+    "docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md": "a65c7837cf31e0879568cb6bd777d73a1ff147fced880c6231f604101a2bdc39",
+    "docs/39_Tag_Readiness_v2.5.0-rc1.md": "551b4136250b58d66b345d44c1e30c416b6fc6fb09ce479428af4c5735e2f7b3",
+    "docs/40_Tag_Readiness_v2.5.0-rc2.md": "940cf416e8b026513861e161eb374ad48e77b127bfb244ad2d88dfbf2a9b7920",
+    "config/pilot.example.json": "6ab4e8a750e9ebb0bed90a24269cf5095bef6dc6759b8376044cc11218832590"
+  },
+  "recommended_tag": "v2.5.0-rc2",
+  "tag_created": false,
+  "merged_to_main": false
+}

@@ -97,7 +97,16 @@ class NotificationCLITests(unittest.TestCase):
             "--channels", "console", "--digest-event-types", MonitoringEventType.PRICE_DECREASED, "--digest-frequency", "daily",
         ])
         with self.db.transaction() as conn:
-            helpers.make_event(conn, self.saved_search, self.run, event_type=MonitoringEventType.PRICE_DECREASED, apartment_id=self.apartment.id)
+            # `generate-digest` (via the CLI, exercised through `_run()`) always uses the real
+            # wall-clock now — it has no `--now` override — so the fixture event must be stamped
+            # "just now" too, not the module's fixed historical `_NOW`, or it silently falls
+            # outside the daily digest's 24h lookback window once enough real time has passed
+            # since `_NOW` was chosen (this test used to intermittently fail for exactly that
+            # reason).
+            helpers.make_event(
+                conn, self.saved_search, self.run, event_type=MonitoringEventType.PRICE_DECREASED,
+                apartment_id=self.apartment.id, now=datetime.now(timezone.utc),
+            )
 
         output = self._run(["generate-digest", "--preference-id", self._preference_id()])
         self.assertIn("Digest delivery:", output)

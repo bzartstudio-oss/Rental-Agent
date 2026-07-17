@@ -108,7 +108,9 @@ it doesn't know about.
 
 ## Acceptance Summary
 
-- **1291+ tests passing, 0 failures, 0 skipped** (see docs/33 Phase 1/11).
+- **1308 tests passing, 0 failures, 0 skipped** (see docs/33 Phase 1/11; also
+  independently re-verified in Step 18's own pre-tag check, see
+  docs/39_Tag_Readiness_v2.5.0-rc1.md).
 - **Full end-to-end acceptance matrix**: docs/33_Release_Candidate_Acceptance.md.
 - **Security acceptance**: docs/34_Security_Acceptance.md — all checks PASS.
 - **Backup/restore**: verified — creation, checksum verification, corruption

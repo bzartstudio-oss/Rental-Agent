@@ -1,0 +1,116 @@
+{
+  "version": "2.5.0-rc1",
+  "parent_commit": "2137ff6c0ec1ffd5710ba880729171a7f2440ff2",
+  "branch": "release/v2.5-rc1",
+  "python_version": "3.13.14",
+  "release_date": "2026-07-17",
+  "note": "This manifest file's own git blob necessarily predates the commit that adds it, so it cannot self-report its own finalization commit hash without amending after the fact (which this project's git discipline avoids). The finalization commit hash is recorded in docs/39_Tag_Readiness_v2.5.0-rc1.md's companion Step 18 final report and is the commit the v2.5.0-rc1 tag points at.",
+  "migrations": {
+    "count": 11,
+    "versions": [
+      "0001_v2_knowledge_engine.sql",
+      "0002_search_requests_created_at_index.sql",
+      "0003_analysis_engine_metrics.sql",
+      "0004_production_connector_fields.sql",
+      "0005_filter_execution_history.sql",
+      "0006_geo_enrichment_history.sql",
+      "0007_feedback_and_preferences.sql",
+      "0008_automatic_platform_discovery.sql",
+      "0009_continuous_monitoring.sql",
+      "0010_notification_delivery.sql",
+      "0011_web_dashboard.sql"
+    ]
+  },
+  "test_suite": {
+    "runner": "python -m unittest discover -s tests -t .",
+    "total_tests": 1308,
+    "result": "OK",
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "execution_time_seconds": 256.680
+  },
+  "health_check": {
+    "script": "scripts/health_check.py",
+    "checks_total": 13,
+    "checks_passing": 13,
+    "checks_warning": 0,
+    "checks_failing": 0
+  },
+  "acceptance": {
+    "document": "docs/33_Release_Candidate_Acceptance.md",
+    "journeys_passing": 6,
+    "result": "PASS"
+  },
+  "security": {
+    "document": "docs/34_Security_Acceptance.md",
+    "secret_scan": "clean (no API keys, passwords, SMTP credentials, webhook secrets, bearer tokens, or private keys found in tracked files)",
+    "result": "PASS"
+  },
+  "backup_restore": {
+    "tests_passing": 10,
+    "document": "tests/scripts/test_backup_restore.py",
+    "result": "PASS"
+  },
+  "supported_execution_interfaces": [
+    "CLI (python -m src.ui.cli, monitoring_cli, notification_cli, feedback_cli, discovery_cli)",
+    "Web dashboard (Flask, server-rendered, localhost by default)",
+    "JSON API v1 (/api/v1/*, consumed by the same web dashboard's own JS and available to any local HTTP client)"
+  ],
+  "fixture_tested_capabilities": [
+    "Search pipeline (discovery, connectors, analysis, filtering, geo enrichment, ranking, reporting) against demo_platform/demo_platform_two",
+    "Automatic platform discovery against a fake page fetcher",
+    "Continuous monitoring and change detection against deterministic fixture reruns",
+    "Notification delivery (console/file channels) against synthetic and real pipeline-recorded events",
+    "Real user journeys A-F (tests/acceptance/)"
+  ],
+  "live_tested_capabilities": [
+    "Web dashboard and JSON API (real Flask app, real facade calls, real SQLite database)",
+    "CLI startup and search execution against real Playwright-rendered local fixture pages",
+    "Backup creation, checksum verification, and restore (real SQLite online backup API)",
+    "Installation health check against the real local environment"
+  ],
+  "production_provider_dependencies": [
+    "RentCast (requires RENTCAST_API_KEY; the one real, non-demo data connector)",
+    "Email notification channel (requires real SMTP credentials)",
+    "Webhook notification channel (requires a real webhook URL and signing secret)",
+    "Ollama AI provider (requires a locally running Ollama server; null/no-op provider is the default fallback)"
+  ],
+  "known_limitations": [
+    "walking_distance/public_transport_time filters are a normalized 0.0-1.0 proximity score, not literal minutes (docs/33 Known Gaps #1)",
+    "A filter-value validation error surfaces as a job's error_summary string, not an immediate form-level 400 (docs/33 Known Gaps #2)",
+    "property_type filtering cannot be meaningfully exercised against demo connector fixtures; only RentCast populates that field (docs/33 Known Gaps #3)",
+    "new_match/new_listing monitoring events require a second observation of a saved search before they can occur (docs/33 Known Gaps #4)",
+    "No commercial rental platform (Zillow, Apartments.com, Rightmove, Idealista, Fotocasa, ImmoScout24, etc.) has a real connector in this release",
+    "No config-file loader exists; config/pilot.example.json is a documented reference for manual entry into the web form or CLI flags"
+  ],
+  "included_documentation": [
+    "MASTER_SPEC.md",
+    "RELEASE_NOTES_v2.5-rc1.md",
+    "CHANGELOG.md",
+    "docs/33_Release_Candidate_Acceptance.md",
+    "docs/34_Security_Acceptance.md",
+    "docs/35_Installation_and_Operations.md",
+    "docs/36_Performance_Baseline.md",
+    "docs/37_Pilot_Operations_Guide.md",
+    "docs/38_Pilot_Feedback_Template.md",
+    "docs/39_Tag_Readiness_v2.5.0-rc1.md"
+  ],
+  "document_checksums_sha256": {
+    "MASTER_SPEC.md": "663cab782ecb4ef074d3c1d2c7f805cce57856873e4598d667f41f7234e7c2cd",
+    "RELEASE_NOTES_v2.5-rc1.md": "43b49b731f19600eebd98d15198d29346b0dae62fd8d5f7d42a0bec349c48d56",
+    "CHANGELOG.md": "9859ff76ac838904944acfd040390a0ab419a1dcbd1abc1fab61d260cd9cca80",
+    "VERSION": "7a285fe69f83e038b46eee0c8ac31a8a41d2444254f3e5f19fed62f65b1a26dd",
+    "docs/33_Release_Candidate_Acceptance.md": "c814bd28e00b6d7bda92c6d10de820ebe1e6efb29d3e3b2770337e090448b1ce",
+    "docs/34_Security_Acceptance.md": "24ab7e7c2abd54b5a686b20e276f4719f23cd91bf4cea791f5c8471c643e55c4",
+    "docs/35_Installation_and_Operations.md": "acc236598fb05b0284e59100461667e8ff934202e4bf504a32cf4ec9d6538f45",
+    "docs/36_Performance_Baseline.md": "1b44ef53b6ffcbbde93d9c4705be5ad3801cc3c12c3fe545ac40cb526054db20",
+    "docs/37_Pilot_Operations_Guide.md": "fd6eaa37c946d4f1892805c25e745a4543cabf790842a875403180f98c38eef2",
+    "docs/38_Pilot_Feedback_Template.md": "e3af88a8e8dddfb05dfd74c5dfbc9abf18bf151e02271caf2bd2f5d77e2e57b0",
+    "docs/39_Tag_Readiness_v2.5.0-rc1.md": "551b4136250b58d66b345d44c1e30c416b6fc6fb09ce479428af4c5735e2f7b3",
+    "config/pilot.example.json": "6ab4e8a750e9ebb0bed90a24269cf5095bef6dc6759b8376044cc11218832590"
+  },
+  "recommended_tag": "v2.5.0-rc1",
+  "tag_created": false,
+  "merged_to_main": false
+}

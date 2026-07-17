@@ -13,3 +13,4 @@ data/cache/*
 !data/cache/.gitkeep
 data/.web_secret_key
 backups/
+project_review.txt

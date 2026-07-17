@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "purpose": "Reference pilot search configuration for Version 2.5.0-rc1 (docs/37_Pilot_Operations_Guide.md).",
+    "how_to_use": "This platform has no config-file loader in this release. A pilot operator reads these values and enters them manually into the web dashboard's New Search form (or the equivalent --flags on `python -m src.ui.cli search`). This file exists so every pilot session starts from the same documented, reviewed starting point, not to be executed directly.",
+    "contains_no_credentials": true,
+    "estimate_disclaimer": "Fields marked \"estimate\": true below are not backed by a literal, route-time travel-time provider. walking_distance and public_transport_time are the platform's own normalized proximity score (0.0-1.0, see docs/26_Geographic_Intelligence.md), not literal minutes. See docs/33_Release_Candidate_Acceptance.md 'Known Gaps' item 1."
+  },
+  "search": {
+    "destination": {
+      "label": "Universitat Politecnica de Valencia campus commute anchor",
+      "address": "Carrer Mestre Serrano, 3, 46120 Alboraia, Valencia, Spain",
+      "estimate": false
+    },
+    "location": {
+      "country": "Spain",
+      "region": "Valencian Community",
+      "city": "Valencia",
+      "postal_area": "46120"
+    },
+    "property_and_room": {
+      "property_type": null,
+      "room_type": "private_room",
+      "number_of_rooms": 1,
+      "number_of_flatmates": null,
+      "_comment": "property_type is left null on purpose: demo connector fixtures never populate Apartment.property_type in this release, so a pilot search that constrains on it will silently return zero demo-connector results (docs/33 Known Gaps item 3). Set it only when RentCast is the active connector."
+    },
+    "budget": {
+      "currency": "EUR",
+      "min_price": 350,
+      "max_price": 750
+    },
+    "availability": {
+      "availability_date_from": "2026-09-01",
+      "availability_date_to": "2026-09-15",
+      "minimum_stay_months": 9,
+      "maximum_stay_months": 12
+    },
+    "proximity_preferences": {
+      "walking_distance": 0.6,
+      "public_transport_time": 0.6,
+      "estimate": true,
+      "_comment": "0.0-1.0 normalized proximity score toward the destination above, not literal walking/transit minutes."
+    },
+    "amenities": {
+      "internet_included": true,
+      "furnished": true,
+      "private_bathroom": null,
+      "air_conditioning": null,
+      "heating": null,
+      "elevator": null,
+      "pets_allowed": null,
+      "_comment": "null means 'no preference' (filter omitted); true/false applies the filter."
+    },
+    "ranking": {
+      "ranking_profile": "default",
+      "_comment": "Built-in profiles are 'default' (price 40% / walking-distance 25% / availability 15% / public-transport 10% / lifestyle 10%) and 'comprehensive' (every ranking rule weighted equally). See docs/27_Intelligent_Ranking_Engine.md."
+    },
+    "feedback_mode": "suggested",
+    "_feedback_mode_comment": "One of explicit_only | suggested | assisted (src/feedback/models.py FeedbackMode). 'suggested' computes inferred preferences but never applies them automatically, which is the recommended pilot default.",
+    "connectors": {
+      "allowed_platform_ids": ["demo_platform", "demo_platform_two"],
+      "_comment": "Only the platform's own deterministic demo connectors are pre-approved for pilot use out of the box. RentCast ('rentcast') is a real, non-demo connector and may be added here only after a pilot operator has independently supplied their own RENTCAST_API_KEY in a local .env file — never in this config file."
+    },
+    "monitoring": {
+      "enable_monitoring": false,
+      "_comment": "Disabled by default for pilot sessions. Enable only after the operator has reviewed docs/30_Continuous_Monitoring.md and understands it creates a saved, versioned, re-runnable search."
+    },
+    "notifications": {
+      "enabled": false,
+      "channels": [],
+      "_comment": "Disabled by default. Console and File channels are safe to enable locally with no external credentials (docs/37_Pilot_Operations_Guide.md section 15); Email/Webhook require real credentials this file must never contain."
+    },
+    "result_limits": {
+      "max_result_count": 10,
+      "_comment": "Conservative cap for pilot sessions to keep result review manageable; the platform default with no cap set is unbounded."
+    },
+    "report_settings": {
+      "generate_html_report": true,
+      "generate_json_report": true,
+      "output_directory": "output/",
+      "_comment": "Matches the existing report generator's default output location (docs/09_Report_System.md); not a new setting."
+    },
+    "save_search": false
+  }
+}

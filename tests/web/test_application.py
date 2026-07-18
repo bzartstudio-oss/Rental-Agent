@@ -13,6 +13,7 @@ provably `create_app()`'s own doing.
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -127,6 +128,68 @@ class PlatformRegistryActivationTests(unittest.TestCase):
         source = Path(ui_cli.__file__).read_text(encoding="utf-8")
         self.assertIn("DiscoveryAgent(db).sync_platforms(ALL_KNOWN_PLATFORMS)", source)
         self.assertTrue(len(ALL_KNOWN_PLATFORMS) >= 3)
+
+
+class SchedulerStartupIntegrationTests(unittest.TestCase):
+    """v2.7 Milestone 2.7.3 — `create_app()`'s scheduler wiring. Every test
+    that enables the scheduler stops it in a `finally` block before the
+    temp database's directory is torn down — otherwise the background
+    thread would keep ticking against a database file that no longer
+    exists once the `TemporaryDirectory` context exits.
+    """
+
+    def test_scheduler_remains_inactive_when_not_enabled(self) -> None:
+        """Default configuration (WEB_ENABLE_SCHEDULER unset) — preserves
+        current web startup behavior exactly: no background thread at all.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with isolated_collectors(tmp_path):
+                db, app = _fresh_app_and_db(tmp_path)
+
+        self.assertIsNone(app.extensions["monitoring_scheduler"])
+
+    def test_scheduler_starts_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with isolated_collectors(tmp_path):
+                db = Database(db_path=tmp_path / "test.db")
+                configuration = WebConfiguration(
+                    host="127.0.0.1", port=0, secret_key="test-secret",
+                    data_dir=tmp_path, output_dir=tmp_path / "output",
+                    enable_scheduler=True, scheduler_interval_seconds=60,
+                )
+                app = create_app(db=db, configuration=configuration)
+                try:
+                    scheduler = app.extensions["monitoring_scheduler"]
+                    self.assertIsNotNone(scheduler)
+                    self.assertTrue(scheduler.is_running)
+                finally:
+                    app.extensions["monitoring_scheduler"].stop()
+
+    def test_startup_performance_remains_acceptable_with_scheduler_enabled(self) -> None:
+        """`create_app()` must return almost immediately regardless of the
+        scheduler flag — starting the background thread must never block
+        app creation waiting for a monitoring cycle to run.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with isolated_collectors(tmp_path):
+                db = Database(db_path=tmp_path / "test.db")
+                configuration = WebConfiguration(
+                    host="127.0.0.1", port=0, secret_key="test-secret",
+                    data_dir=tmp_path, output_dir=tmp_path / "output",
+                    enable_scheduler=True, scheduler_interval_seconds=60,
+                )
+
+                started_at = time.monotonic()
+                app = create_app(db=db, configuration=configuration)
+                elapsed = time.monotonic() - started_at
+
+                try:
+                    self.assertLess(elapsed, 2.0)
+                finally:
+                    app.extensions["monitoring_scheduler"].stop()
 
 
 if __name__ == "__main__":

@@ -108,25 +108,34 @@ alone.
 
 ## 3. Proposed Version 2.7 Milestones
 
-- **Milestone 2.7.1 — Platform Registry Activation.** Make `create_app()`
-  call `DiscoveryAgent.sync_platforms(ALL_KNOWN_PLATFORMS)` once at
-  startup, the same idempotent call `ui/cli.py` already makes on every
-  run. Directly resolves Finding 1. This is the milestone that turns
-  "RentCast is built" into "RentCast is reachable in production."
-- **Milestone 2.7.2 — RentCast Resilience.** Add explicit 429 handling to
-  `RentCastClient` (respecting a `Retry-After` header when present,
-  distinct failure category from a 5xx or 401) and a lightweight
-  call-budget guard so one search cannot silently exhaust the free tier's
-  monthly quota. Resolves Finding 3.
-- **Milestone 2.7.3 — In-Process Scheduled Monitoring.** A background
-  scheduler thread inside the existing Flask/waitress process (mirroring
-  `JobRunner`'s established `threading.Thread` pattern) that periodically
-  calls `due_saved_searches()`/`claim_due_run()` and runs the monitoring
-  workflow for due saved searches — off by default, opt-in via a new
-  `WEB_ENABLE_SCHEDULER` env var, same convention as `WEB_ALLOW_NETWORK`.
-  Runs in the same process and against the same `/data` disk as the web
-  app, so it sidesteps the Render cross-service-disk limitation entirely
-  rather than requiring a second Render service. Resolves Finding 4.
+- **Milestone 2.7.1 — Platform Registry Activation (done, 2026-07-18).**
+  Made `create_app()` call `DiscoveryAgent.sync_platforms(ALL_KNOWN_PLATFORMS)`
+  once at startup, the same idempotent call `ui/cli.py` already makes on
+  every run. Directly resolves Finding 1. This is the milestone that
+  turned "RentCast is built" into "RentCast is reachable in production."
+  Commit `e65b32e`.
+- **Milestone 2.7.2 — RentCast Resilience (done, 2026-07-18).** Added
+  explicit 429 handling to `RentCastClient` (respecting a `Retry-After`
+  header when present, distinct failure category from a 5xx or 401) and
+  a monthly call-budget guard (`src/connectors/rentcast/budget.py`, new
+  migration `0012_provider_call_budget.sql`) so one search cannot
+  silently exhaust the free tier's monthly quota. Resolves Finding 3.
+  Commit `55450e4`.
+- **Milestone 2.7.3 — In-Process Scheduled Monitoring (done, 2026-07-18).**
+  A background `MonitoringScheduler` daemon thread (`src/web/scheduler.py`,
+  new) inside the existing Flask/waitress process (mirroring `JobRunner`'s
+  established `threading.Thread` pattern) that periodically calls
+  `MonitoringEngine.run_due()` — the same published entry point that
+  already claims each due saved search atomically
+  (`scheduling.claim_due_run()`) before executing it, so this adds no new
+  monitoring logic and no new overlap-prevention mechanism of its own.
+  Off by default, opt-in via `WEB_ENABLE_SCHEDULER=1` (interval tunable
+  via `WEB_SCHEDULER_INTERVAL_SECONDS`, default 60s), same convention as
+  `WEB_ALLOW_NETWORK`. Runs in the same process and against the same
+  `/data` disk as the web app, so it sidesteps the Render
+  cross-service-disk limitation entirely rather than requiring a second
+  Render service. No new dependency (pure `threading`, no Redis/Celery/
+  external cron). Resolves Finding 4.
 - **Milestone 2.7.4 — Notification Delivery Verification.** No new
   source code. A documented, followable procedure (extending
   `docs/45_Deployment_Guide.md`) for the user to configure real SMTP/

@@ -58,6 +58,13 @@ class WebConfiguration:
     # of this app. See docs/45_Deployment_Guide.md "Production Safety".
     secure_cookies: bool = False
     trust_proxy: bool = False
+    # v2.7 Milestone 2.7.3 — off by default so plain local dev/tests are
+    # byte-identical to before; opt in explicitly with WEB_ENABLE_SCHEDULER=1
+    # once a deployment wants unattended monitoring. See
+    # docs/45_Deployment_Guide.md "Background Jobs and Monitoring" and
+    # docs/46_Version_2.7_Planning.md Milestone 2.7.3.
+    enable_scheduler: bool = False
+    scheduler_interval_seconds: float = 60.0
 
     @classmethod
     def from_env(cls) -> "WebConfiguration":
@@ -69,4 +76,12 @@ class WebConfiguration:
         debug = os.environ.get("WEB_DEBUG", "").strip() in {"1", "true", "yes"}
         secure_cookies = os.environ.get("WEB_SECURE_COOKIES", "").strip() in {"1", "true", "yes"}
         trust_proxy = os.environ.get("WEB_TRUST_PROXY", "").strip() in {"1", "true", "yes"}
-        return cls(host=host, port=port, debug=debug, secure_cookies=secure_cookies, trust_proxy=trust_proxy)
+        enable_scheduler = os.environ.get("WEB_ENABLE_SCHEDULER", "").strip() in {"1", "true", "yes"}
+        try:
+            scheduler_interval_seconds = float(os.environ.get("WEB_SCHEDULER_INTERVAL_SECONDS", "60"))
+        except ValueError:
+            scheduler_interval_seconds = 60.0
+        return cls(
+            host=host, port=port, debug=debug, secure_cookies=secure_cookies, trust_proxy=trust_proxy,
+            enable_scheduler=enable_scheduler, scheduler_interval_seconds=scheduler_interval_seconds,
+        )

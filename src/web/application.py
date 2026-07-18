@@ -9,6 +9,8 @@ over `core/agent.py`.
 
 from __future__ import annotations
 
+import atexit
+
 from flask import Flask, g, request
 
 from src.discovery.discovery_agent import DiscoveryAgent
@@ -100,7 +102,30 @@ def create_app(*, db: Database | None = None, configuration: WebConfiguration | 
     register_routes(app)
     register_api(app)
 
+    # v2.7 Milestone 2.7.3 — in-process scheduled monitoring, off by default
+    # (WEB_ENABLE_SCHEDULER unset). See src/web/scheduler.py's own docstring
+    # for why a background daemon thread against this same `db`/process is
+    # safe with no Redis/Celery/external cron. `app.extensions` (not a
+    # module-level global) so each `create_app()` call — including every
+    # test's own — gets an independent scheduler tied to its own database;
+    # a real production process only ever calls `create_app()` once (see
+    # `src/web/wsgi.py`), so this is still exactly one scheduler thread there.
+    scheduler = None
+    if configuration.enable_scheduler:
+        from src.web.scheduler import MonitoringScheduler
+
+        scheduler = MonitoringScheduler(db, interval_seconds=configuration.scheduler_interval_seconds)
+        scheduler.start()
+        atexit.register(scheduler.stop)
+    app.extensions["monitoring_scheduler"] = scheduler
+
     return app
+
+
+def get_scheduler():
+    from flask import current_app
+
+    return current_app.extensions.get("monitoring_scheduler")
 
 
 def get_facade() -> WebServiceFacade:

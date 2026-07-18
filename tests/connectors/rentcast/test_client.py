@@ -11,13 +11,14 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from src.connectors.rentcast.client import RentCastClient, RentCastClientError
+from src.connectors.rentcast.client import RentCastClient, RentCastClientError, RentCastRateLimitError
 
 
-def _response(status_code: int, json_body=None) -> Mock:
+def _response(status_code: int, json_body=None, headers: dict | None = None) -> Mock:
     response = Mock()
     response.status_code = status_code
     response.json.return_value = json_body if json_body is not None else []
+    response.headers = headers if headers is not None else {}
     if status_code >= 400:
         response.raise_for_status.side_effect = requests.HTTPError(f"{status_code} error")
     else:
@@ -137,6 +138,104 @@ class RentCastClientRetryTests(unittest.TestCase):
             client.get_rental_listings({"city": "Austin"})
 
         mock_get.assert_called_once()  # a 400 will never succeed on retry
+
+
+class RentCastClientRateLimitTests(unittest.TestCase):
+    """v2.7 Milestone 2.7.2 — explicit 429 handling, distinct from the
+    generic 5xx path. No test here makes a real network call or sleeps for
+    real (`time.sleep` is always mocked), matching every other test in this
+    module.
+    """
+
+    @patch("src.connectors.rentcast.client.time.sleep")
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_429_with_retry_after_seconds_waits_the_exact_value_then_succeeds(self, mock_get, mock_sleep) -> None:
+        mock_get.side_effect = [
+            _response(429, headers={"Retry-After": "7"}),
+            _response(200, [{"id": "x"}]),
+        ]
+        client = RentCastClient(api_key="test-key", max_retries=1)
+
+        result = client.get_rental_listings({"city": "Austin"})
+
+        self.assertEqual(result, [{"id": "x"}])
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once_with(7.0)
+
+    @patch("src.connectors.rentcast.client.time.sleep")
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_429_with_retry_after_above_the_cap_is_clamped(self, mock_get, mock_sleep) -> None:
+        mock_get.side_effect = [
+            _response(429, headers={"Retry-After": "3600"}),
+            _response(200, []),
+        ]
+        client = RentCastClient(api_key="test-key", max_retries=1)
+
+        client.get_rental_listings({"city": "Austin"})
+
+        mock_sleep.assert_called_once_with(60.0)  # _MAX_RETRY_AFTER_SECONDS
+
+    @patch("src.connectors.rentcast.client.time.sleep")
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_429_without_retry_after_falls_back_to_exponential_backoff(self, mock_get, mock_sleep) -> None:
+        mock_get.side_effect = [_response(429), _response(200, [])]
+        client = RentCastClient(api_key="test-key", max_retries=1)
+
+        client.get_rental_listings({"city": "Austin"})
+
+        mock_sleep.assert_called_once_with(0.5)  # _BACKOFF_BASE_SECONDS * 2**0
+
+    @patch("src.connectors.rentcast.client.time.sleep")
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_429_with_unparseable_retry_after_falls_back_to_exponential_backoff(self, mock_get, mock_sleep) -> None:
+        mock_get.side_effect = [_response(429, headers={"Retry-After": "not-a-number"}), _response(200, [])]
+        client = RentCastClient(api_key="test-key", max_retries=1)
+
+        client.get_rental_listings({"city": "Austin"})
+
+        mock_sleep.assert_called_once_with(0.5)
+
+    @patch("src.connectors.rentcast.client.time.sleep")
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_429_exhausts_retries_then_raises_rate_limit_error(self, mock_get, mock_sleep) -> None:
+        mock_get.return_value = _response(429, headers={"Retry-After": "1"})
+        client = RentCastClient(api_key="test-key", max_retries=2)
+
+        with self.assertRaises(RentCastRateLimitError):
+            client.get_rental_listings({"city": "Austin"})
+
+        self.assertEqual(mock_get.call_count, 3)  # initial attempt + 2 retries
+
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_429_with_zero_max_retries_raises_immediately(self, mock_get) -> None:
+        mock_get.return_value = _response(429, headers={"Retry-After": "1"})
+        client = RentCastClient(api_key="test-key", max_retries=0)
+
+        with self.assertRaises(RentCastRateLimitError):
+            client.get_rental_listings({"city": "Austin"})
+
+        mock_get.assert_called_once()
+
+    def test_rate_limit_error_is_a_client_error_subclass(self) -> None:
+        """Existing callers catching the parent `RentCastClientError` (e.g.
+        `RentCastConnector.fetch_listing()`) need no change to also handle 429.
+        """
+        self.assertTrue(issubclass(RentCastRateLimitError, RentCastClientError))
+
+    @patch("src.connectors.rentcast.client.time.sleep")
+    @patch("src.connectors.rentcast.client.requests.get")
+    def test_api_key_never_appears_in_logs_during_a_429_retry(self, mock_get, mock_sleep) -> None:
+        mock_get.side_effect = [
+            _response(429, headers={"Retry-After": "2"}),
+            _response(200, []),
+        ]
+        client = RentCastClient(api_key="super-secret-key-value", max_retries=1)
+
+        with self.assertLogs("src.connectors.rentcast.client", level="WARNING") as captured:
+            client.get_rental_listings({"city": "Austin"})
+
+        joined = "\n".join(captured.output)
+        self.assertNotIn("super-secret-key-value", joined)
 
 
 if __name__ == "__main__":

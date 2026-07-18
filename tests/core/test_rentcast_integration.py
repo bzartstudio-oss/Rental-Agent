@@ -57,6 +57,18 @@ class RentCastIntegrationTests(unittest.TestCase):
 
         self.agent = RentalResearchAgent(self.db, output_dir=self.output_dir)
 
+        # v2.7 Milestone 2.7.2 — `ConnectorFactory.get(platform)` (called
+        # internally by `RentalResearchAgent.run()`) constructs
+        # `RentCastConnector` with no `db=` kwarg, so its lazy default (the
+        # real project database) must be redirected to this test's own
+        # temporary `self.db` — otherwise every run here would silently
+        # write real `provider_call_budget` rows into real project data.
+        self._db_patch = patch(
+            "src.connectors.rentcast.connector.Database",
+            lambda *args, **kwargs: self.db,
+        )
+        self._db_patch.start()
+
         self._client_patch = patch("src.connectors.rentcast.connector.RentCastClient")
         mock_client_cls = self._client_patch.start()
         mock_client_cls.return_value.get_rental_listings.return_value = [
@@ -67,6 +79,7 @@ class RentCastIntegrationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._client_patch.stop()
+        self._db_patch.stop()
         self._collectors_cm.__exit__(None, None, None)
         self._tmp_dir.cleanup()
         self._env.__exit__(None, None, None)

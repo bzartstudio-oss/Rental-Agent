@@ -22,6 +22,7 @@ from unittest.mock import patch
 from src.connectors.rentcast.client import RentCastClientError
 from src.connectors.rentcast.connector import RentCastConnector
 from src.search.search_request import SearchRequest
+from src.storage.database import Database
 from tests.support import isolated_collectors
 
 _FIXTURE_PATH = Path(__file__).parent.parent.parent.parent / "src" / "connectors" / "rentcast" / "fixtures" / "sample_response.json"
@@ -36,7 +37,21 @@ class RentCastSearchTests(unittest.TestCase):
         self._collectors_cm = isolated_collectors(Path(self._tmp_dir.name))
         self._collectors_cm.__enter__()
 
+        # v2.7 Milestone 2.7.2 — every `RentCastConnector()` call below is
+        # constructed with no arguments, so its lazy `db=None` default (the
+        # real project database) must be redirected here the same way
+        # `isolated_collectors` already redirects media/raw-page writes —
+        # otherwise every run of this suite would silently write real
+        # `provider_call_budget` rows into real project data.
+        db_path = Path(self._tmp_dir.name) / "test.db"
+        self._db_patch = patch(
+            "src.connectors.rentcast.connector.Database",
+            lambda *args, **kwargs: Database(db_path=db_path),
+        )
+        self._db_patch.start()
+
     def tearDown(self) -> None:
+        self._db_patch.stop()
         self._collectors_cm.__exit__(None, None, None)
         self._tmp_dir.cleanup()
         self._env.__exit__(None, None, None)

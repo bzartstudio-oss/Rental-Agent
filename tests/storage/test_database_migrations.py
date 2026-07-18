@@ -68,7 +68,7 @@ class MigrationFromV1DatabaseTests(unittest.TestCase):
             self.assertIn("platform_performance_observations", tables)
 
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([r[0] for r in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])  # every real migration applied, in order
+            self.assertEqual([r[0] for r in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])  # every real migration applied, in order
         finally:
             conn.close()
 
@@ -88,7 +88,7 @@ class RepeatedStartupTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([r[0] for r in rows], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])  # each recorded exactly once, not twice
+            self.assertEqual([r[0] for r in rows], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])  # each recorded exactly once, not twice
         finally:
             conn.close()
 
@@ -233,7 +233,7 @@ class Migration0002IndexTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
         finally:
             conn.close()
 
@@ -315,7 +315,7 @@ class Migration0010NotificationTablesTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             applied = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+            self.assertEqual([row[0] for row in applied], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
         finally:
             conn.close()
 

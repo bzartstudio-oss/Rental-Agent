@@ -81,7 +81,18 @@ class ProviderIntegrationTestCase(unittest.TestCase):
         _register(self.db, "demo_platform", "demo_platform")
         _register(self.db, "rentcast", "rentcast")
 
+        # v2.7 Milestone 2.7.2 — `ConnectorFactory.get(platform)` (called
+        # internally by `RentalResearchAgent.run()`) constructs
+        # `RentCastConnector` with no `db=` kwarg, so its lazy default (the
+        # real project database) must be redirected to this test's own
+        # temporary `self.db` — otherwise the rentcast-preference tests below
+        # would silently write real `provider_call_budget` rows into real
+        # project data.
+        self._rentcast_db_patch = patch("src.connectors.rentcast.connector.Database", lambda *a, **k: self.db)
+        self._rentcast_db_patch.start()
+
     def tearDown(self) -> None:
+        self._rentcast_db_patch.stop()
         self._browser_cm.__exit__(None, None, None)
         self._collectors_cm.__exit__(None, None, None)
         self._tmp_dir.cleanup()

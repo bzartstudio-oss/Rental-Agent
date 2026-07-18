@@ -22,12 +22,41 @@ logger = get_logger(__name__)
 # down), so this favors a small number of well-spaced attempts over rapid retries.
 _BACKOFF_BASE_SECONDS = 0.5
 
+# A cap on how long a single `Retry-After` value is ever honored for. Without this, a
+# misbehaving or malicious response could stall an entire search job — the same
+# "never let one thing quietly hang the whole run" discipline `_MAX_PAGES` already
+# applies to pagination.
+_MAX_RETRY_AFTER_SECONDS = 60.0
+
 
 class RentCastClientError(Exception):
     """Wraps every network/HTTP failure (timeout, connection error, 401, 5xx, or any
     other non-2xx response) into one exception type, so `RentCastConnector` never needs
     to know about `requests`'s own exception hierarchy or RentCast's status codes.
     """
+
+
+class RentCastRateLimitError(RentCastClientError):
+    """Raised when RentCast returns 429 and retries are exhausted. A subclass of
+    `RentCastClientError` — every existing caller that catches the parent type (e.g.
+    `RentCastConnector.fetch_listing()`) needs no change, while a caller that wants to
+    distinguish "rate limited" from "some other failure" can catch this specifically.
+    """
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """RentCast's `Retry-After` (per RFC 7231) is an integer/float number of seconds in
+    practice for rate-limit responses — the HTTP-date form is not handled (deliberately
+    out of scope; falls back to exponential backoff exactly like a missing header
+    would). Returns `None` for anything unparseable, never raises.
+    """
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        return None
+    return max(0.0, min(seconds, _MAX_RETRY_AFTER_SECONDS))
 
 
 class RentCastClient:
@@ -75,6 +104,28 @@ class RentCastClient:
                 raise RentCastClientError(
                     f"authentication failed (401) on {path} — check the configured API key"
                 )
+
+            if response.status_code == 429:
+                if attempt >= self._max_retries:
+                    raise RentCastRateLimitError(
+                        f"rate limit exceeded (429) on {path} after {attempt + 1} attempt(s)"
+                    )
+                retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+                wait_seconds = retry_after if retry_after is not None else _BACKOFF_BASE_SECONDS * (2**attempt)
+                # Never log headers or the API key — only path/attempt/timing, the same
+                # discipline every other log line in this module already follows.
+                logger.warning(
+                    "rentcast rate limited, retrying",
+                    extra={
+                        "path": path,
+                        "attempt": attempt + 1,
+                        "wait_seconds": wait_seconds,
+                        "retry_after_header_present": retry_after is not None,
+                    },
+                )
+                time.sleep(wait_seconds)
+                attempt += 1
+                continue
 
             if response.status_code >= 500:
                 if attempt >= self._max_retries:

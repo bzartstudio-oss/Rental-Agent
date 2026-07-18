@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 from src.connectors.rentcast.connector import RentCastConnector
 from src.search.search_request import SearchRequest
+from src.storage.database import Database
 from tests.connectors.sdk.certification import ConnectorCertificationMixin
 from tests.support import isolated_collectors
 
@@ -37,6 +38,19 @@ class RentCastConnectorCertificationTests(ConnectorCertificationMixin, unittest.
         self._collectors_cm = isolated_collectors(Path(self._tmp_dir.name))
         self._collectors_cm.__enter__()
 
+        # v2.7 Milestone 2.7.2 — `RentCastConnector()` is instantiated with no
+        # arguments by the certification mixin itself, so its lazy `db=None`
+        # default (the real project database) must be redirected here the
+        # same way `isolated_collectors` already redirects media/raw-page
+        # writes — otherwise every certification run would silently write
+        # real `provider_call_budget` rows into real project data.
+        db_path = Path(self._tmp_dir.name) / "test.db"
+        self._db_patch = patch(
+            "src.connectors.rentcast.connector.Database",
+            lambda *args, **kwargs: Database(db_path=db_path),
+        )
+        self._db_patch.start()
+
         self._client_patch = patch("src.connectors.rentcast.connector.RentCastClient")
         mock_client_cls = self._client_patch.start()
         mock_client_cls.return_value.get_rental_listings.return_value = [
@@ -46,6 +60,7 @@ class RentCastConnectorCertificationTests(ConnectorCertificationMixin, unittest.
 
     def tearDown(self) -> None:
         self._client_patch.stop()
+        self._db_patch.stop()
         self._collectors_cm.__exit__(None, None, None)
         self._tmp_dir.cleanup()
         self._env.__exit__(None, None, None)

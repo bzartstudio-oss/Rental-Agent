@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 from src.collectors import raw_page_store
 from src.connectors.base import RawListing
+from src.connectors.rentcast import budget
 from src.connectors.rentcast.client import RentCastClient, RentCastClientError
 from src.connectors.sdk import BaseConnector, ConnectorMetadata, register_connector
 from src.connectors.sdk.configuration import ConnectorConfiguration
@@ -29,6 +31,7 @@ from src.connectors.sdk.exceptions import (
     ConnectorParsingError,
 )
 from src.search.search_request import SearchRequest
+from src.storage.database import Database
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -40,14 +43,30 @@ logger = get_logger(__name__)
 _PAGE_SIZE = 100
 _MAX_PAGES = 3
 
+# v2.7 Milestone 2.7.2 — RentCast's free tier itself. Overridable via
+# RENTCAST_MONTHLY_CALL_BUDGET for a paid tier with a different limit; the
+# pagination cap above already bounds one *search* to at most 3 calls, this
+# bounds the platform's real monthly quota across every search combined.
+_DEFAULT_MONTHLY_CALL_BUDGET = 50
+
 
 @register_connector
 class RentCastConnector(BaseConnector):
     platform_id = "rentcast"
 
-    def __init__(self, config: ConnectorConfiguration | None = None) -> None:
+    def __init__(self, config: ConnectorConfiguration | None = None, db: Database | None = None) -> None:
+        """`db` is optional so tests can point this connector at a temporary
+        database instead of the real project one — the same `db: Database |
+        None = None` pattern every other engine in this codebase already uses
+        (`create_app()`, `ui/cli.py::main()`). Left unset in production, it
+        resolves to the real project database only when actually needed
+        (`fetch_listing()`), not eagerly here — a connector instantiated just
+        for capability discovery (`connector_info()`/`supports()`) must not
+        have the side effect of opening/migrating a database it never reads.
+        """
         super().__init__(config)
         self._api_key: str | None = None
+        self._db = db
 
     def connect(self) -> None:
         """Reads the API key from `ConnectorConfiguration.credentials["api_key"]` first
@@ -90,7 +109,20 @@ class RentCastConnector(BaseConnector):
         page's records are combined and saved as one JSON raw capture via
         `raw_page_store`, the same audit trail every other connector gets, just with
         `suffix="json"` instead of the default `"html"`.
+
+        v2.7 Milestone 2.7.2 — each page request is gated by
+        `budget.try_consume_call()` first: if the monthly call budget is
+        already exhausted before any page is fetched, this raises so the
+        search fails clearly rather than silently returning zero results. If
+        the budget runs out *mid*-pagination (after at least one real page
+        already succeeded), pagination stops and whatever was already fetched
+        is returned as a genuine partial result — never a crash, matching
+        this connector's existing "never let one thing quietly hang or
+        silently fail the whole run" discipline.
         """
+        db = self._db if self._db is not None else Database()
+        monthly_limit = self._monthly_call_budget()
+
         client = RentCastClient(
             api_key=self._api_key,
             timeout_ms=self.config.timeout_ms,
@@ -100,7 +132,22 @@ class RentCastConnector(BaseConnector):
 
         records: list[dict] = []
         offset = 0
-        for _ in range(_MAX_PAGES):
+        for page_number in range(_MAX_PAGES):
+            with db.transaction() as conn:
+                allowed = budget.try_consume_call(conn, self.platform_id, monthly_limit, datetime.now(timezone.utc))
+
+            if not allowed:
+                if page_number == 0:
+                    raise ConnectorConnectionError(
+                        f"rentcast: monthly API call budget exhausted "
+                        f"({monthly_limit} calls/month) — no request was made"
+                    )
+                logger.warning(
+                    "rentcast call budget exhausted mid-pagination, returning partial results",
+                    extra={"offset": offset, "records_so_far": len(records)},
+                )
+                break
+
             page_params = {**params, "limit": _PAGE_SIZE, "offset": offset}
             try:
                 page = client.get_rental_listings(page_params)
@@ -121,6 +168,20 @@ class RentCastConnector(BaseConnector):
 
         raw_page_store.save_page(self.platform_id, json.dumps(records), suffix="json")
         return records
+
+    def _monthly_call_budget(self) -> int:
+        """`RENTCAST_MONTHLY_CALL_BUDGET` overrides the free-tier default —
+        for a paid RentCast tier with a different monthly limit. Any unset or
+        unparseable value falls back to the documented free-tier default
+        rather than disabling the guard.
+        """
+        raw = os.environ.get("RENTCAST_MONTHLY_CALL_BUDGET")
+        if raw:
+            try:
+                return max(1, int(raw))
+            except ValueError:
+                pass
+        return _DEFAULT_MONTHLY_CALL_BUDGET
 
     def _build_params(self, request: SearchRequest) -> dict[str, Any]:
         """`SearchRequest.location` is a free-text string — its structured shape is

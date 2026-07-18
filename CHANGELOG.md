@@ -4,6 +4,71 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.6.0-rc1] — 2026-07-18 — Pilot Configuration, Fixture Realism, and Config Loading
+
+The first Release Candidate of Version 2.6 — implements the approved
+roadmap in `docs/41_Version_2.6_Planning.md`, closing essentially every
+non-blocking finding from the v2.5 pilot session
+(`docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md`). Built on top of
+`v2.5.0-rc2` (commit `51c5d4b`, promoted to `main`/`platform-v1` and tagged
+`v2.5.0-rc2` — both v2.5 tags remain unchanged and immutable). Branch:
+`feature/v2.6`.
+
+### Fixed
+- `config/pilot.example.json`'s example budget (350-750 EUR) returned zero
+  results against actual demo fixture prices (950-2600 EUR); currency and
+  proximity-preference values unconditionally zeroed every demo result.
+  Corrected (Milestone 2.6.1).
+- The apartment detail page's geographic-analysis section rendered a raw
+  Python dict repr instead of a clean "not available" message when no geo
+  data existed. Fixed (Milestone 2.6.1).
+- Demo connector fixtures (`demo_platform`/`demo_platform_two`) never
+  populated `currency`, `property_type`, or coordinates, permanently
+  disabling the `currency`/`property_type` filters and all real geographic
+  analysis against the only credential-free connectors. Populated
+  (Milestone 2.6.2).
+- Duplicate saved-search names were allowed with no warning. Now rejected
+  at creation time (never retroactively) (Milestone 2.6.5).
+- Real monitoring runs against demo connectors could never produce a
+  genuine price/availability/new-match change event, at any number of
+  repeated runs, since demo fixtures were 100% static. A second,
+  deterministic "week 2" fixture snapshot now makes this genuinely
+  demonstrable end-to-end (Milestone 2.6.4).
+- `config/pilot.example.json` was "a reference document, not an importable
+  file" — no config-file loader existed. The New Search dashboard form can
+  now load one directly (Milestone 2.6.3). One real defect was found and
+  fixed during this work: `property_and_room.number_of_rooms`/`.room_type`
+  looked like they should map onto the registered `number_of_rooms` filter
+  but describe a different concept (exact total-bedroom match vs. "how many
+  rooms the pilot user needs") — auto-mapping them silently zeroed every
+  demo result. Left unmapped instead, with a regression test.
+
+### Added
+- `docs/42_Version_2.6_Acceptance_Report.md` — Phase 3 integration
+  verification: full suite, health check, fresh-database migrations,
+  backup/restore, CLI startup, a live 16-step end-to-end dashboard workflow,
+  config-loader regression proof, and full security verification. Decision:
+  **PASS**.
+- `RELEASE_NOTES_v2.6.0-rc1.md`, `release/v2.6.0-rc1-manifest.json`,
+  `docs/43_Tag_Readiness_v2.6.0-rc1.md`.
+
+### Known Limitations (Non-Blocking, Documented)
+- Proximity filters (`walking_distance`/`public_transport_time`) still need
+  a curated `city_center`/`public_transport` reference point for the exact
+  search location — populating apartment coordinates (2.6.2) was necessary
+  but not sufficient; nothing seeds that curated reference automatically.
+- A local database seeded before Milestone 2.6.2 does not retroactively
+  gain `currency`/`property_type`/coordinates on re-observation — a
+  pre-existing (Migration 0004) design choice, not a Version 2.6
+  regression. Fresh databases are unaffected.
+- The saved-search "Run now" job-status page's client-side auto-redirect
+  404s after a monitoring run completes, even though the run itself
+  completes correctly — pre-existing Version 2.5 Step 16 behavior, out of
+  this release's scope.
+- No commercial rental platform connector exists in this release (unchanged
+  from v2.5 — blocked by each platform's Terms of Service, an explicit
+  business/legal decision this plan does not grant).
+
 ## [2.5.0-rc2] — 2026-07-17 — Pilot Fix: Browser Image Serving
 
 A pilot-driven follow-up to `v2.5.0-rc1` (which remains unchanged and

@@ -1,0 +1,222 @@
+{
+  "version": "2.6.0-rc1",
+  "parent_commit": "8f7b0e4ad835fbfb8d7c8371905584632c4fd8f7",
+  "v2_5_rc1_tag_target_commit": "138c8743b7f6fe23a6f74bff0d47847752ed1316",
+  "v2_5_rc2_tag_target_commit": "51c5d4bdae95626bb8d70553dd654dec7b3b2289",
+  "v2_5_tags_immutable": true,
+  "branch": "feature/v2.6",
+  "python_version": "3.13.14",
+  "release_date": "2026-07-18",
+  "note": "This manifest file's own git blob necessarily predates the commit that adds it, so it cannot self-report its own finalization commit hash without amending after the fact. The finalization commit hash is recorded in docs/43_Tag_Readiness_v2.6.0-rc1.md and is the commit the v2.6.0-rc1 tag points at. v2.5.0-rc1 (138c8743) and v2.5.0-rc2 (51c5d4b) are both unchanged and remain separate, valid, immutable tags.",
+  "planning_document": "docs/41_Version_2.6_Planning.md",
+  "milestones": [
+    {
+      "id": "2.6.1",
+      "title": "Pilot Materials Correctness",
+      "commit": "1ae6ef4e6e2986af29849a9641f19cfb6733e126",
+      "summary": "Fixed pilot config example values (budget/currency/proximity) and the geographic-analysis section's raw-dict-repr rendering bug."
+    },
+    {
+      "id": "2.6.2",
+      "title": "Demo Fixture Realism",
+      "commit": "7af54802388940a2dac640dacec9a6089829136b",
+      "summary": "Populated demo connector fixtures with real currency, property_type, and coordinates."
+    },
+    {
+      "id": "2.6.5",
+      "title": "Saved-Search Name Validation",
+      "commit": "464ce7a097543e636319f032515d4b3633c02d9f",
+      "summary": "Rejects duplicate saved-search names at creation time only, never retroactively."
+    },
+    {
+      "id": "2.6.4",
+      "title": "Monitoring Test Fixture Variation",
+      "commit": "be28d1eb102a725f8ed83627ed391fb5a423b0d2",
+      "summary": "Added a deterministic week-2 demo fixture snapshot proving real monitoring change-detection end-to-end."
+    },
+    {
+      "id": "2.6.3",
+      "title": "Configuration Loading",
+      "commit": "a8a5833e7b064cac605b62163a047e5b62c4d53e",
+      "summary": "Added a config-file loader to the New Search dashboard form, reusing all existing form validation."
+    }
+  ],
+  "changes_since_v2.5.0-rc2": {
+    "fixed": [
+      "config/pilot.example.json's example budget returned zero results against actual demo fixture prices (2.6.1)",
+      "Geographic-analysis section rendered a raw Python dict repr instead of a clean message (2.6.1)",
+      "Demo connector fixtures never populated currency/property_type/coordinates, disabling those filters and real geo analysis against credential-free connectors (2.6.2)",
+      "Duplicate saved-search names were allowed with no warning (2.6.5)",
+      "Real monitoring runs against demo connectors could never produce a genuine change event since fixtures were 100% static (2.6.4)",
+      "No config-file loader existed for config/pilot.example.json (2.6.3)"
+    ],
+    "real_defect_found_and_fixed_during_implementation": {
+      "milestone": "2.6.3",
+      "description": "property_and_room.number_of_rooms/.room_type looked like they should map onto the registered number_of_rooms filter, but that filter is an exact total-bedroom-count match, not 'how many rooms the pilot user needs'. Auto-mapping them silently zeroed every demo result. Fixed by leaving both fields deliberately unmapped, with a regression test.",
+      "regression_test": "tests/web/test_forms.py::ConfigLoaderTests::test_number_of_rooms_and_room_type_are_never_translated"
+    },
+    "added_documentation": [
+      "docs/41_Version_2.6_Planning.md (cherry-picked from main, commit 8f7b0e4)",
+      "docs/42_Version_2.6_Acceptance_Report.md (commit 3e9ff1e)",
+      "docs/43_Tag_Readiness_v2.6.0-rc1.md (this release's finalization)"
+    ],
+    "not_changed": "Everything else from v2.5.0-rc2 — same architecture, same engines, same security posture. No new product features, no redesign, no migrations."
+  },
+  "migrations": {
+    "count": 11,
+    "versions": [
+      "0001_v2_knowledge_engine.sql",
+      "0002_search_requests_created_at_index.sql",
+      "0003_analysis_engine_metrics.sql",
+      "0004_production_connector_fields.sql",
+      "0005_filter_execution_history.sql",
+      "0006_geo_enrichment_history.sql",
+      "0007_feedback_and_preferences.sql",
+      "0008_automatic_platform_discovery.sql",
+      "0009_continuous_monitoring.sql",
+      "0010_notification_delivery.sql",
+      "0011_web_dashboard.sql"
+    ],
+    "changed_since_v2.5.0-rc2": false,
+    "verified_against_fresh_database": true
+  },
+  "test_suite": {
+    "runner": "python -m unittest discover -s tests -t .",
+    "total_tests": 1344,
+    "result": "OK",
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "execution_time_seconds": 282.594,
+    "new_tests_since_v2.5.0-rc2": 32
+  },
+  "health_check": {
+    "script": "scripts/health_check.py",
+    "checks_total": 13,
+    "checks_passing": 13,
+    "checks_warning": 0,
+    "checks_failing": 0
+  },
+  "config_loader_security": {
+    "route": "POST /search/new (config_file upload field, additive to the existing form)",
+    "loader_module": "src/web/forms/config_loader.py",
+    "malformed_json_result": "WebValidationError",
+    "non_object_json_result": "WebValidationError",
+    "missing_search_key_result": "WebValidationError",
+    "missing_location_result": "WebValidationError",
+    "out_of_range_value_result": "WebValidationError (reuses parse_optional_float's existing minimum check)",
+    "invalid_utf8_bytes_result": "WebValidationError, no crash",
+    "shipped_pilot_config_result": "loads and starts a real search with non-zero, correctly-filtered results",
+    "number_of_rooms_room_type_result": "never translated onto a filter (regression-tested)",
+    "upload_size_limit": "bounded by the existing global MAX_CONTENT_LENGTH (5 MiB), no new limit code",
+    "backward_compatibility": "no existing CLI flag or form field added, removed, or renamed",
+    "result": "PASS"
+  },
+  "acceptance": {
+    "document": "docs/42_Version_2.6_Acceptance_Report.md",
+    "workflow_steps_completed": 16,
+    "result": "PASS",
+    "release_blockers": 0
+  },
+  "security": {
+    "csrf_tests_passing": 5,
+    "path_traversal_tests_passing": 3,
+    "security_header_and_binding_tests_passing": "15/15 (tests/web/test_security.py)",
+    "secrets_tracked": "none found (git ls-files scan for .env/secret/credential/.key/.pem)",
+    "runtime_artifacts_tracked": "none found (only .gitkeep placeholders under data/ and output/)",
+    "result": "PASS",
+    "changed_since_v2.5.0-rc2": false
+  },
+  "backup_restore": {
+    "tests_passing": 10,
+    "document": "tests/scripts/test_backup_restore.py",
+    "live_round_trip_demonstrated": true,
+    "result": "PASS",
+    "changed_since_v2.5.0-rc2": false
+  },
+  "dashboard_workflow": {
+    "steps": [
+      "config-file upload UI rendered correctly", "search", "filtering", "ranking",
+      "apartment detail", "images (RC2-era same-origin media route)",
+      "clean geo-analysis 'not available' message (2.6.1 fix)", "saved search",
+      "monitoring run 1", "monitoring run 2 (live deduplication confirmed)",
+      "notification preview", "notification delivery (console+file, real file artifacts confirmed)",
+      "feedback recording", "preference explanation with real evidence/history",
+      "discovery run", "JSON API (2 endpoints)"
+    ],
+    "result": "PASS"
+  },
+  "supported_execution_interfaces": [
+    "CLI (python -m src.ui.cli, monitoring_cli, notification_cli, feedback_cli, discovery_cli)",
+    "Web dashboard (Flask, server-rendered, localhost by default) — New Search form now accepts an optional config-file upload",
+    "JSON API v1 (/api/v1/*, consumed by the same web dashboard's own JS and available to any local HTTP client)"
+  ],
+  "fixture_tested_capabilities": [
+    "Search pipeline (discovery, connectors, analysis, filtering, geo enrichment, ranking, reporting) against demo_platform/demo_platform_two",
+    "currency/property_type filters now genuinely discriminating against enriched demo fixture data (2.6.2)",
+    "Automatic platform discovery against a fake page fetcher",
+    "Continuous monitoring and genuine change detection against the new week-2 fixture snapshot (2.6.4)",
+    "Notification delivery (console/file channels) against synthetic and real pipeline-recorded events",
+    "Real user journeys A-F (tests/acceptance/)",
+    "Config-file loader against the real, shipped config/pilot.example.json (2.6.3)"
+  ],
+  "live_tested_capabilities": [
+    "Web dashboard and JSON API (real Flask app, real facade calls, real SQLite database)",
+    "CLI startup and search execution against real Playwright-rendered local fixture pages",
+    "Backup creation, checksum verification, and restore (real SQLite online backup API)",
+    "Installation health check against the real local environment",
+    "A full 16-step live end-to-end dashboard workflow against the real, long-lived project database (Phase 3)"
+  ],
+  "production_provider_dependencies": [
+    "RentCast (requires RENTCAST_API_KEY; the one real, non-demo data connector)",
+    "Email notification channel (requires real SMTP credentials)",
+    "Webhook notification channel (requires a real webhook URL and signing secret)",
+    "Ollama AI provider (requires a locally running Ollama server; null/no-op provider is the default fallback)"
+  ],
+  "known_limitations": [
+    "Proximity filters (walking_distance/public_transport_time) still need a curated city_center/public_transport reference point for the exact search location; populating coordinates (2.6.2) was necessary but not sufficient",
+    "A local database seeded before Milestone 2.6.2 does not retroactively backfill currency/property_type/coordinates on re-observation (pre-existing Migration-0004 design, not a Version 2.6 regression; fresh databases unaffected)",
+    "The saved-search 'Run now' job-status page's client-side auto-redirect 404s after a monitoring run completes, even though the run itself completes correctly (pre-existing Version 2.5 Step 16 behavior, out of this release's scope)",
+    "No commercial rental platform connector exists in this release (blocked by Terms of Service, an explicit business/legal decision)"
+  ],
+  "included_documentation": [
+    "MASTER_SPEC.md",
+    "RELEASE_NOTES_v2.6.0-rc1.md",
+    "CHANGELOG.md",
+    "docs/33_Release_Candidate_Acceptance.md",
+    "docs/34_Security_Acceptance.md",
+    "docs/35_Installation_and_Operations.md",
+    "docs/36_Performance_Baseline.md",
+    "docs/37_Pilot_Operations_Guide.md",
+    "docs/38_Pilot_Feedback_Template.md",
+    "docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md",
+    "docs/39_Tag_Readiness_v2.5.0-rc1.md",
+    "docs/40_Tag_Readiness_v2.5.0-rc2.md",
+    "docs/41_Version_2.6_Planning.md",
+    "docs/42_Version_2.6_Acceptance_Report.md",
+    "docs/43_Tag_Readiness_v2.6.0-rc1.md"
+  ],
+  "document_checksums_sha256": {
+    "MASTER_SPEC.md": "6acf93827bffc7b470351e3e28b5b4ba7098a00c14c9f274d46ccc7a513a9d25",
+    "RELEASE_NOTES_v2.6.0-rc1.md": "a8b836dc6112ac013f2ec1e93ea57cadb132ef45ceb316306383bd3027834661",
+    "CHANGELOG.md": "64ce4c21cf5aa505fa382759820416a96292a63029d53e68c326188cdb7f02ca",
+    "VERSION": "3f601e009278aa7fd80b346bc9fa67f81aa64357f10beec0b8d8032de4a667b1",
+    "docs/33_Release_Candidate_Acceptance.md": "d1604e8ae2a9c9bee2a85927d35679bf576eb9b24516a549286438eaae21288a",
+    "docs/34_Security_Acceptance.md": "e0325b8c57cd6efa0fb8a805abaf4e4aa56b548edd1201478717c2698d9ea500",
+    "docs/35_Installation_and_Operations.md": "239cc8385e2ef5270dd2a0948efff8a078c5f38b3eff5f972f33e5e13c93012d",
+    "docs/36_Performance_Baseline.md": "27acd00b78199bc529a456277f96de8b2d27d670dac8c9eaca7fa3680c75c24f",
+    "docs/37_Pilot_Operations_Guide.md": "738f9f8a2ded8110676eeade00aa9d5457322c18a7a64c93163cbfa6d6678881",
+    "docs/38_Pilot_Feedback_Template.md": "c5b5ce4a098e97a01f2f4bac1cdf4218bcfc13ff56f19536a27f1839a3c61f3c",
+    "docs/38_Pilot_Feedback_pilot-valencia-01_2026-07-17.md": "e77d676136c1e43af6dcf4549fcfbdd44c97696c06d9b8ea11ece9fe1154b0b7",
+    "docs/39_Tag_Readiness_v2.5.0-rc1.md": "67d944bbc9175cb881d6a208b0e11db5202e551131fd4e92dff7a8fa986d07e5",
+    "docs/40_Tag_Readiness_v2.5.0-rc2.md": "5f6235108d476a228a818179495f9067678cab0242aceacb5a59b19d90e366a2",
+    "docs/41_Version_2.6_Planning.md": "0de110b5690383c2349fb16b261aa014f916da66766aeff439fbea06e52ed272",
+    "docs/42_Version_2.6_Acceptance_Report.md": "fd5a82c782b73e174ce1098cd75bf4f6c2f2f0c055f7378629ba1ebc1c3ca5d5",
+    "docs/43_Tag_Readiness_v2.6.0-rc1.md": "90079d0724b2299417179cacbe21620c0839076bf4d7af648606781016cabf67",
+    "config/pilot.example.json": "2fb1973d367b55ac93224e68a38a386d7de8da34ebb6059aa7cb593cef855689"
+  },
+  "recommended_tag": "v2.6.0-rc1",
+  "tag_created": false,
+  "merged_to_platform_v1": false,
+  "merged_to_main": false
+}

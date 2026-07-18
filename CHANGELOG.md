@@ -4,6 +4,76 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/) — dates are when the change was made,
 not a formal release date (this project doesn't cut releases yet).
 
+## [2.7.0] — 2026-07-18 — Production Integrations: RentCast Activation, Resilience, and Scheduling
+
+Built on top of `v2.6.0` (production-verified, commit `7068a0f`, deployed to
+Render). Implements the four **required** milestones from
+`docs/46_Version_2.7_Planning.md` — the optional milestones (2.7.5-2.7.8:
+images/source-link research, cross-platform dedup design, observability
+decision, Chromium decision record) are explicitly deferred, not part of
+this release. Branch: `feature/v2.7`.
+
+### Fixed
+- The production web application never seeded the platform registry —
+  `create_app()` never called `DiscoveryAgent.sync_platforms()` the way
+  `ui/cli.py` already did on every startup, so a deployment that only ever
+  ran the web server showed "No connector-available platforms registered
+  yet." RentCast — already fully built and ToS-verified since v2.0 — was
+  therefore never actually reachable in production. `create_app()` now
+  makes the same idempotent call at startup (Milestone 2.7.1).
+
+### Added
+- Explicit HTTP 429 (rate-limit) handling in `RentCastClient`, respecting a
+  `Retry-After` header when present (capped at 60s) and falling back to the
+  existing exponential backoff otherwise (Milestone 2.7.2).
+- A monthly API call-budget guard for RentCast (`src/connectors/rentcast/budget.py`,
+  migration `0012_provider_call_budget.sql`) — defaults to the free tier's
+  50 requests/month, overridable via `RENTCAST_MONTHLY_CALL_BUDGET`; gates
+  each page request in `RentCastConnector.fetch_listing()` so one search
+  cannot silently exhaust the monthly quota. Resets automatically at the
+  start of each calendar month; concurrent requests cannot exceed the
+  budget (atomic conditional `UPDATE`, the same idiom `monitoring_schedules`'
+  own claim mechanism already established) (Milestone 2.7.2).
+- `MonitoringScheduler` (`src/web/scheduler.py`) — an in-process background
+  thread that runs `MonitoringEngine.run_due()` on a fixed interval inside
+  the same web process, off by default, opt-in via `WEB_ENABLE_SCHEDULER=1`
+  (interval tunable via `WEB_SCHEDULER_INTERVAL_SECONDS`, default 60s). No
+  new monitoring logic and no new overlap-prevention mechanism — reuses the
+  existing atomic `claim_due_run()` claim exactly as published. Requires no
+  Redis/Celery/external cron/second Render service, sidestepping the
+  documented Render Cron Job cross-service-disk limitation entirely
+  (Milestone 2.7.3).
+- `docs/45_Deployment_Guide.md` §14 "Notification Delivery Verification" —
+  production SMTP/webhook configuration reference, a safe manual-testing
+  procedure (`preview-notification`/`send-test-notification`, never a real
+  send in automated tests), expected behavior when credentials are missing
+  or invalid, and deployment-specific troubleshooting. Verification only —
+  the email/webhook channels themselves were already fully built in v2.5
+  Step 15; no channel code changed (Milestone 2.7.4).
+- `WEB_ENABLE_SCHEDULER`/`WEB_SCHEDULER_INTERVAL_SECONDS` documented in
+  `.env.example` (a gap discovered during Milestone 2.7.4's verification
+  pass over 2.7.3's own work).
+
+### Known Limitations (Non-Blocking, Documented)
+- **Notification delivery is not automated by the scheduler.**
+  `MonitoringEngine` (including the 2.7.3 scheduler) has zero coupling to
+  `NotificationEngine` — verified directly, zero references to
+  "notification" in `src/monitoring/engine.py`. Turning a detected change
+  into a sent email/webhook still requires a person clicking "Send now" or
+  running `notification-cli` — unchanged from v2.5's original design
+  separating detection from delivery, and still an open item in
+  `notes/Questions.md`.
+- A real RentCast API key must still be configured (`RENTCAST_API_KEY`) for
+  any of this release's connector-activation/resilience work to return real
+  listings in production — free tier, no card required at signup.
+- No commercial rental platform connector beyond RentCast exists in this
+  release (unchanged from v2.5/v2.6 — blocked by each other candidate
+  platform's Terms of Service).
+- Chromium is not installed in the production Docker image (unchanged,
+  explicitly deferred — `demo_platform`/`demo_platform_two`, the only
+  connectors that need it, are reference/test fixtures, not real
+  production data sources).
+
 ## [2.6.0-rc1] — 2026-07-18 — Pilot Configuration, Fixture Realism, and Config Loading
 
 The first Release Candidate of Version 2.6 — implements the approved

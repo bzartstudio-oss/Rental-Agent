@@ -155,6 +155,7 @@ what actually matters for a production deploy:
 | `WEB_SECURE_COOKIES` | Recommended | Sets the `Secure` cookie flag. Only correct once HTTPS actually reaches the app (true on Render/Fly/Railway's managed edges). |
 | `WEB_TRUST_PROXY` | Recommended | Trusts one hop of `X-Forwarded-*` headers from the platform's reverse proxy. |
 | `RENTCAST_API_KEY` | No | Enables the real RentCast data connector; demo connectors work with no key. |
+| `RENTCAST_MONTHLY_CALL_BUDGET` | No (default `50`) | Overrides RentCast's free-tier monthly call budget guard — only needed for a paid tier with a different limit. |
 | `SMTP_*` / `WEBHOOK_*` | No | Enable email/webhook notification channels; console/file channels need nothing. See [§14](#14-notification-delivery-verification). |
 | `WEB_ENABLE_SCHEDULER` / `WEB_SCHEDULER_INTERVAL_SECONDS` | No | Runs unattended monitoring inside the web process on a fixed interval. See [§8](#8-background-jobs-and-monitoring). |
 | `OPENAI_API_KEY` / `OLLAMA_*` | No | AI provider selection; a null fallback provider works with neither set. |

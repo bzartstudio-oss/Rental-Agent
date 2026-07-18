@@ -136,11 +136,23 @@ alone.
   cross-service-disk limitation entirely rather than requiring a second
   Render service. No new dependency (pure `threading`, no Redis/Celery/
   external cron). Resolves Finding 4.
-- **Milestone 2.7.4 — Notification Delivery Verification.** No new
-  source code. A documented, followable procedure (extending
-  `docs/45_Deployment_Guide.md`) for the user to configure real SMTP/
-  webhook credentials in the Render dashboard and confirm end-to-end
-  delivery, without ever committing a real secret. Resolves Finding 7.
+- **Milestone 2.7.4 — Notification Delivery Verification (done,
+  2026-07-18).** No new source code, as scoped — verification and
+  documentation only. Directly inspected both channels' configuration
+  loading, secret redaction, and failure-handling paths and confirmed
+  against the 142 already-passing tests in `tests/notifications/` (no new
+  tests needed — verification found no uncovered behavior or regression
+  risk). Confirmed, and documented as an honest finding rather than
+  silently fixed: `MonitoringEngine` (including the 2.7.3 scheduler)
+  has zero coupling to notification delivery — detection and delivery
+  remain separate, delivery still requires a manual "Send now" or
+  `notification-cli` trigger, matching `docs/31_Notification_Delivery.md`'s
+  original design and the still-open `notes/Questions.md` item on this.
+  Added `docs/45_Deployment_Guide.md` §14 (production SMTP/webhook config,
+  safe testing procedure, missing/invalid-credential behavior,
+  troubleshooting) and `WEB_ENABLE_SCHEDULER`/
+  `WEB_SCHEDULER_INTERVAL_SECONDS` to `.env.example` (a real, if small,
+  gap left over from 2.7.3). Resolves Finding 7.
 - **Milestone 2.7.5 — Images/Source-Link Limitation Write-Up.** Research
   only: confirm (via RentCast's published API documentation, not
   guesswork) whether any RentCast tier exposes photos; document the

@@ -155,7 +155,8 @@ what actually matters for a production deploy:
 | `WEB_SECURE_COOKIES` | Recommended | Sets the `Secure` cookie flag. Only correct once HTTPS actually reaches the app (true on Render/Fly/Railway's managed edges). |
 | `WEB_TRUST_PROXY` | Recommended | Trusts one hop of `X-Forwarded-*` headers from the platform's reverse proxy. |
 | `RENTCAST_API_KEY` | No | Enables the real RentCast data connector; demo connectors work with no key. |
-| `SMTP_*` / `WEBHOOK_*` | No | Enable email/webhook notification channels; console/file channels need nothing. |
+| `SMTP_*` / `WEBHOOK_*` | No | Enable email/webhook notification channels; console/file channels need nothing. See [§14](#14-notification-delivery-verification). |
+| `WEB_ENABLE_SCHEDULER` / `WEB_SCHEDULER_INTERVAL_SECONDS` | No | Runs unattended monitoring inside the web process on a fixed interval. See [§8](#8-background-jobs-and-monitoring). |
 | `OPENAI_API_KEY` / `OLLAMA_*` | No | AI provider selection; a null fallback provider works with neither set. |
 
 ## 7. Database and Persistent Storage Requirements
@@ -181,32 +182,50 @@ background thread inside the same request-serving process and share its
 database connection to the same on-disk file, so nothing extra is required
 for these to work in production.
 
-**Unattended recurring monitoring is the one gap.** `src/ui/monitoring_cli.py
-run-due` is designed to be invoked periodically by an OS-level
-scheduler (cron / Windows Task Scheduler — see
+**Unattended recurring monitoring detection is resolved (v2.7 Milestone
+2.7.3) — unattended notification *delivery* remains a separate, still-manual
+step; see the honest distinction below.**
+
+`src/ui/monitoring_cli.py run-due` was originally designed to be invoked
+periodically by an OS-level scheduler (cron / Windows Task Scheduler — see
 `src/monitoring/scheduling.py::task_scheduler_command_examples()`), reading
 and writing the *same* database file the web service uses. On Render (and
 Railway, and Heroku), a Cron Job is a **separate service** and cannot mount
 the same persistent Disk as the web service — so it cannot see the same
-database. This is a genuine platform limitation, not an oversight in this
-repository.
+database. This remains true and is a genuine platform limitation, not an
+oversight in this repository — but it no longer blocks unattended monitoring
+*detection*, because that no longer needs a second service at all:
 
-This deployment does not attempt to route around that limitation with a
-fragile workaround (e.g. a second in-container cron daemon fighting the web
-process for PID 1). If unattended recurring monitoring is required in
-production, the options — in order of how well they fit this platform's
-architecture — are:
+1. **Recommended: enable the in-process scheduler.** Set
+   `WEB_ENABLE_SCHEDULER=1` (optionally `WEB_SCHEDULER_INTERVAL_SECONDS`,
+   default `60`) on the web service itself. A background daemon thread
+   inside the *same* process calls `MonitoringEngine.run_due()` on that
+   interval — same process, same `/data` disk, no second Render service, no
+   Redis/Celery/external cron. See `src/web/scheduler.py`. Off by default;
+   this is the one explicit opt-in required.
+2. **Do nothing extra.** The dashboard's "Run Now" already works fully in
+   production without the scheduler enabled; recurring detection is a
+   convenience layered on top, not a requirement for the platform to
+   function.
+3. **Move to Fly.io or a single VM** (unchanged from before) — only
+   relevant now if a *separate* worker process is wanted for some other
+   reason; the in-process scheduler already removes the disk-sharing
+   limitation that used to be the reason to consider this.
 
-1. **Do nothing extra.** The dashboard's "Run Now" already works fully in
-   production; recurring monitoring is a convenience, not a requirement for
-   the platform to function.
-2. **Move to Fly.io**, whose scheduled Machines can share a Fly Volume with
-   the always-on web Machine — the same filesystem, so `run-due` sees the
-   same database. Not set up here (see [§3](#3-hosting-recommendation) for
-   why it isn't the default recommendation), but is the natural next step
-   if this becomes a requirement.
-3. **Move to a single VM** with a real crontab entry running `run-due`
-   against the same local disk the web process uses.
+**What the scheduler does *not* do: delivery.** `MonitoringEngine` has no
+coupling to notifications (verified directly — v2.7 Milestone 2.7.4). It
+writes `MonitoringEvent` rows; turning an eligible event into an actual sent
+email/webhook is `NotificationEngine.process_pending_deliveries()`/
+`process_due_digests()`, triggered today only by a person clicking "Send
+now"/"Generate digest" in the dashboard or running `notification-cli`
+manually — the scheduler does not call either automatically. This is not a
+regression introduced by 2.7.3; docs/31_Notification_Delivery.md's own
+design has always kept detection and delivery as separate concerns, and
+`notes/Questions.md` already logs "what should drive notification delivery
+once this runs somewhere other than a manually-triggered CLI" as an open,
+unresolved decision. If unattended delivery is wanted, the same
+`WEB_ENABLE_SCHEDULER` thread is the natural place to add it — a genuine
+future milestone, not silently assumed here.
 
 ## 9. Production Safety Checklist
 
@@ -312,8 +331,170 @@ this change):
 - [ ] A real backup taken (`scripts/backup.py`) and verified
       (`scripts/verify_backup.py`) against the live volume at least once
 
+## 14. Notification Delivery Verification
+
+v2.7 Milestone 2.7.4 — verification and documentation only; see
+`docs/46_Version_2.7_Planning.md` Milestone 2.7.4 and Finding 7. Email and
+webhook channels (`src/notifications/channels/`) were already fully built
+in v2.5 Step 15 — nothing in this section is new code. For the full
+technical model (message/template/retry/rate-limit/quiet-hours behavior),
+see `docs/31_Notification_Delivery.md`; this section covers only what's
+specific to *this production deployment*.
+
+### Verified findings
+
+- **Configuration**: both channels read a config-dict key first, then fall
+  back to the matching environment variable (`smtp_host`/`SMTP_HOST`,
+  `url`/`WEBHOOK_URL`, etc. — full list in `docs/31_Notification_Delivery.md`
+  "Email Configuration"/"Webhook Configuration"). `is_enabled()` is always a
+  live `validate_configuration()` check, never a cached flag — a channel
+  genuinely cannot claim to be enabled while misconfigured.
+- **Credential loading**: read directly from `os.environ` at send time (or
+  an explicit per-instance config dict, used only by tests) — never written
+  to disk, never logged, never included in `channel_info()`/
+  `serialize_result()`/`preview()`.
+- **Failure handling**: every documented SMTP/HTTP failure mode (auth
+  failure, connection error, server error, timeout, HTTP 4xx/5xx) is caught
+  inside the channel's own `send()` and converted into a structured
+  `NotificationChannelResult(success=False, error_category=...)` —
+  `NotificationChannel.send()`'s own contract is "never raises for an
+  ordinary delivery failure." Verified directly against both channels'
+  existing test suites (`tests/notifications/test_email_channel.py`,
+  `test_webhook_channel.py`) — every failure branch is exercised through a
+  fake/mock transport, no real socket ever opens.
+- **Secret redaction**: both channels' `_redact()` strips a configured
+  password/signing secret out of any exception text before it becomes
+  `result.error` — verified by
+  `test_authentication_failure_is_categorized_and_password_is_redacted`
+  (email) and `test_transport_error_is_categorized_as_connection_error_and_redacted`
+  (webhook), plus `test_preview_never_sends_and_never_leaks_password`/
+  `test_serialize_result_never_echoes_configuration`. No log line in either
+  channel or in `NotificationEngine._attempt_delivery()` ever includes raw
+  config — only `channel`, `success`, `error` (already redacted),
+  `error_category`, `duration_ms`.
+- **Monitoring/scheduler integration**: `MonitoringEngine` (including the
+  in-process scheduler added in [§8](#8-background-jobs-and-monitoring))
+  has zero coupling to notifications — confirmed by direct inspection, zero
+  matches for "notification" anywhere in `src/monitoring/engine.py`. A
+  notification failure therefore cannot reach scheduled monitoring at all
+  today, because nothing in the scheduled path calls into notifications.
+  Delivery itself (when manually triggered from the dashboard) runs inside
+  a normal Flask request; an unhandled exception there is caught by
+  `WebErrorHandler`'s registered `500` handler (`src/web/error_handler.py`)
+  the same as any other route — never a process crash, never a raw
+  traceback shown to the user.
+- **No live send required for tests**: confirmed no `smtplib.SMTP`/
+  `urllib.request.urlopen` (or equivalent) call exists anywhere in
+  `tests/notifications/` — every test drives a fake `EmailTransport`/mock
+  `HttpTransport` instead.
+
+### Production configuration — SMTP email
+
+Set in the Render dashboard's environment variables (never committed —
+`render.yaml` already marks these `sync: false`):
+
+| Variable | Required | Notes |
+|---|---|---|
+| `SMTP_HOST` | Yes | Your provider's SMTP hostname. |
+| `SMTP_PORT` | No (default `587`) | `465` if using `SMTP_USE_SSL=1` instead of STARTTLS. |
+| `SMTP_USERNAME` | Usually | Most providers require auth even for STARTTLS. |
+| `SMTP_PASSWORD` | Usually | An app-specific password if your provider supports one — never your account's main password. |
+| `SMTP_SENDER` | Yes | The `From:` address; the channel is disabled without it. |
+| `SMTP_RECIPIENT` | Yes, unless every notification preference sets its own | Default recipient when a message carries no per-send override. |
+| `SMTP_USE_TLS` / `SMTP_USE_SSL` | No (defaults `true`/`false`) | Exactly one should be `true` for most providers. |
+
+### Production configuration — webhook
+
+| Variable | Required | Notes |
+|---|---|---|
+| `WEBHOOK_URL` | Yes | Must be `http://` or `https://`; the channel is disabled otherwise. |
+| `WEBHOOK_SIGNING_SECRET` | Recommended | Enables an `X-Signature-256: sha256=<hmac>` header so the receiving endpoint can verify authenticity. |
+
+### Production configuration — enabling the scheduler
+
+Covered fully in [§8](#8-background-jobs-and-monitoring); the two relevant
+variables are `WEB_ENABLE_SCHEDULER=1` and, optionally,
+`WEB_SCHEDULER_INTERVAL_SECONDS`. Enabling it makes monitoring detection
+unattended; it does **not** by itself make notification delivery
+unattended (see [§8](#8-background-jobs-and-monitoring)'s "What the
+scheduler does *not* do").
+
+### Testing both channels safely, without exposing credentials
+
+- **Automated tests (this repo's own suite)**: already safe by
+  construction — `tests/notifications/test_email_channel.py`/
+  `test_webhook_channel.py` never touch a real socket. Run them directly
+  any time: `python -m unittest discover -s tests/notifications -t .`
+- **Local manual verification, no real send**: `notification-cli
+  preview-notification --preference-id <id> --event-ids <id> --channel
+  email` (or `--channel webhook`) renders exactly what would be sent
+  (subject/body, or the JSON payload for webhook) without calling `send()`
+  at all — safe with real-looking config, since `preview()` is
+  contractually forbidden from performing the network side effect.
+  `notification-cli send-test-notification --preference-id <id> --channel
+  email` sends exactly one real message through the configured channel —
+  the deliberate, explicit way to test a real send once, rather than
+  waiting for a genuine monitoring event.
+- **First real send, once in production**: use a destination you control
+  and can safely discard — for email, an inbox you own that you don't mind
+  receiving a test alert; for webhook, a temporary webhook-capture/
+  inspection URL (several free tools exist for exactly this purpose — pick
+  one you trust, this guide does not endorse a specific one) so you can
+  see the exact payload without standing up your own receiver first. Set
+  the real env vars in the Render dashboard, run `send-test-notification`
+  (or trigger the dashboard's "Send now" against a real pending event),
+  confirm it arrives, then
+  either leave the config as-is (if it's your real destination) or replace
+  it with your real one.
+- **Never**: put a real SMTP password or webhook signing secret in a
+  commit, a test file, this documentation, or a chat/log message. `.env`
+  is gitignored; `.env.example`/`render.yaml` only ever contain empty
+  placeholders or `sync: false`.
+
+### Expected behavior when credentials are missing or invalid
+
+- **Missing** (e.g. `SMTP_HOST` or `WEBHOOK_URL` unset): the channel
+  reports `is_enabled() == False`; `NotificationEngine` simply excludes it
+  from a preference's eligible channels — no error, no crash, the other
+  configured channels (console/file, always enabled) continue to work.
+- **Present but wrong** (bad password, unreachable host, invalid/denied
+  webhook URL): `send()` returns `success=False` with a specific
+  `error_category` (`unauthorized`, `connection_error`, `server_error`,
+  `invalid_configuration`, or `rejected`), recorded as a
+  `channel_health_observations` row and a `NotificationAttempt`. A
+  retryable category (`connection_error`/`server_error`) is retried later
+  per `NotificationPolicy`'s backoff, up to `dead_letter_after_attempts`;
+  `unauthorized`/`invalid_configuration`/`rejected` are not retried, since
+  no amount of waiting fixes a bad password or a malformed URL.
+
+### Troubleshooting common notification failures
+
+See `docs/31_Notification_Delivery.md` "Troubleshooting" for the general
+cases (a channel showing "not currently configured," a digest never
+generating, a delivery stuck `RETRY_SCHEDULED`, missing original listing
+URLs). Deployment-specific additions:
+
+- **A channel that works locally shows `unauthorized`/`connection_error`
+  only on Render.** Almost always an env var typo or a provider that
+  blocks the outbound port Render uses — verify the exact variable names
+  above are set (not just present locally in `.env`) via the Render
+  dashboard, and check the provider's own outbound-port requirements.
+- **Nothing is ever delivered even though a channel is enabled.** Check
+  whether anything is actually calling `process_pending_deliveries()`/
+  `process_due_digests()` — per this section's own finding, the scheduler
+  does not do this automatically; confirm a person is using "Send now" or
+  a `notification-cli` invocation, or that a genuinely automated trigger
+  has been added deliberately (a future milestone, not assumed here).
+- **A webhook signature verification fails on the receiving end.** Confirm
+  `WEBHOOK_SIGNING_SECRET` is identical on both sides and that the
+  receiver is hashing the exact raw request body (not a re-serialized
+  copy) — `X-Signature-256` is computed over the literal `payload_json`
+  bytes sent.
+
 ## Related Documents
 
+- [31_Notification_Delivery.md](31_Notification_Delivery.md) — full technical model behind [§14](#14-notification-delivery-verification)
 - [32_Web_Dashboard.md](32_Web_Dashboard.md)
 - [35_Installation_and_Operations.md](35_Installation_and_Operations.md)
 - [34_Security_Acceptance.md](34_Security_Acceptance.md)
+- [46_Version_2.7_Planning.md](46_Version_2.7_Planning.md) — Milestone 2.7.4

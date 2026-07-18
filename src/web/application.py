@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from flask import Flask, g, request
 
+from src.discovery.discovery_agent import DiscoveryAgent
+from src.discovery.known_platforms import ALL_KNOWN_PLATFORMS
 from src.storage.database import Database
 from src.web.configuration import WebConfiguration
 from src.web.dependencies import WebDependencies
@@ -28,6 +30,19 @@ def create_app(*, db: Database | None = None, configuration: WebConfiguration | 
     """
     configuration = configuration or WebConfiguration.from_env()
     db = db if db is not None else Database()
+
+    # v2.7 Milestone 2.7.1 — the web app never seeded the platform registry
+    # the way `ui/cli.py` does on every startup (line ~130), so a production
+    # deployment that only ever runs the web server showed zero
+    # connector-available platforms — RentCast (fully built, ToS-verified)
+    # was registered in code but never actually reachable. Same call, same
+    # place in the startup sequence conceptually (before anything that reads
+    # the registry). `sync_platforms()` is itself idempotent — it upserts by
+    # platform id/homepage inside one transaction — so calling it here changes
+    # nothing about the CLI's own identical call and is safe to repeat on
+    # every process restart.
+    DiscoveryAgent(db).sync_platforms(ALL_KNOWN_PLATFORMS)
+
     dependencies = WebDependencies(db=db, configuration=configuration)
     facade = WebServiceFacade(dependencies)
 

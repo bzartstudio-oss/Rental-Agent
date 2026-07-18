@@ -36,6 +36,16 @@ def create_app(*, db: Database | None = None, configuration: WebConfiguration | 
     app.config["MAX_CONTENT_LENGTH"] = configuration.max_content_length
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = configuration.secure_cookies
+
+    if configuration.trust_proxy:
+        # Only when explicitly opted in (WEB_TRUST_PROXY=1) — trusts exactly one
+        # hop of X-Forwarded-* headers, matching a single reverse proxy in front
+        # of the app (e.g. a PaaS's own TLS-terminating edge). See
+        # docs/45_Deployment_Guide.md "Production Safety".
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     app.extensions["web_dependencies"] = dependencies
     app.extensions["web_facade"] = facade

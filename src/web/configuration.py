@@ -53,11 +53,20 @@ class WebConfiguration:
     project_root: Path = PROJECT_ROOT
     output_dir: Path = OUTPUT_DIR
     data_dir: Path = DATA_DIR
+    # Both default False so plain local HTTP development is unaffected —
+    # opt in explicitly once a deployment actually terminates HTTPS in front
+    # of this app. See docs/45_Deployment_Guide.md "Production Safety".
+    secure_cookies: bool = False
+    trust_proxy: bool = False
 
     @classmethod
     def from_env(cls) -> "WebConfiguration":
         allow_network = os.environ.get("WEB_ALLOW_NETWORK", "").strip() in {"1", "true", "yes"}
         host = os.environ.get("WEB_HOST") or ("0.0.0.0" if allow_network else "127.0.0.1")
-        port = int(os.environ.get("WEB_PORT", "5000"))
+        # $PORT is the convention several hosting platforms (Render, Railway, Heroku)
+        # inject automatically; WEB_PORT remains the explicit, platform-agnostic override.
+        port = int(os.environ.get("WEB_PORT") or os.environ.get("PORT", "5000"))
         debug = os.environ.get("WEB_DEBUG", "").strip() in {"1", "true", "yes"}
-        return cls(host=host, port=port, debug=debug)
+        secure_cookies = os.environ.get("WEB_SECURE_COOKIES", "").strip() in {"1", "true", "yes"}
+        trust_proxy = os.environ.get("WEB_TRUST_PROXY", "").strip() in {"1", "true", "yes"}
+        return cls(host=host, port=port, debug=debug, secure_cookies=secure_cookies, trust_proxy=trust_proxy)

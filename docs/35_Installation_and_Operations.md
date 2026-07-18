@@ -182,3 +182,4 @@ document.
 - [32_Web_Dashboard.md](32_Web_Dashboard.md)
 - [33_Release_Candidate_Acceptance.md](33_Release_Candidate_Acceptance.md)
 - [36_Performance_Baseline.md](36_Performance_Baseline.md)
+- [45_Deployment_Guide.md](45_Deployment_Guide.md) — running this same application in production, not just locally

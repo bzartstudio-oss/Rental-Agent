@@ -9,13 +9,19 @@ program: where files live, and process-wide settings loaded from the environment
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
-DB_PATH = DATA_DIR / "rental_intelligence.db"
-OUTPUT_DIR = PROJECT_ROOT / "output"
 
 load_dotenv(PROJECT_ROOT / ".env")
+
+# Overridable so a deployment can point these at a mounted persistent volume
+# (e.g. a container filesystem where only /data survives a redeploy) instead
+# of a path under the application code itself. Unset in local development —
+# defaults are unchanged.
+DATA_DIR = Path(os.environ.get("RENTAL_AGENT_DATA_DIR") or PROJECT_ROOT / "data")
+OUTPUT_DIR = Path(os.environ.get("RENTAL_AGENT_OUTPUT_DIR") or PROJECT_ROOT / "output")
+DB_PATH = DATA_DIR / "rental_intelligence.db"

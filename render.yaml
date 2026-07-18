@@ -1,0 +1,62 @@
+# Render.com Blueprint — see docs/45_Deployment_Guide.md "Hosting: Render".
+# Deploy: push this repo to GitHub, then in the Render dashboard choose
+# "New +" -> "Blueprint" and select it. Render reads this file and proposes
+# the service below; you still confirm the plan and fill in the `sync: false`
+# secret values yourself before the first deploy.
+#
+# The `starter` plan is the smallest one with a persistent Disk attached —
+# the `free` plan's filesystem is ephemeral and would silently discard the
+# SQLite database (and every backup) on every restart or redeploy. This is a
+# real, non-zero monthly cost; nothing here provisions or charges anything
+# until you click "Apply" in the Render dashboard yourself.
+services:
+  - type: web
+    name: rental-agent-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/v1/health
+    disk:
+      name: rental-agent-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: WEB_SECRET_KEY
+        sync: false # generate your own (e.g. `python -c "import secrets; print(secrets.token_hex(32))"`) and paste it in the Render dashboard — never commit a real value
+      - key: WEB_ALLOW_NETWORK
+        value: "1"
+      - key: WEB_SECURE_COOKIES
+        value: "1"
+      - key: WEB_TRUST_PROXY
+        value: "1"
+      - key: RENTAL_AGENT_DATA_DIR
+        value: /data
+      - key: RENTAL_AGENT_OUTPUT_DIR
+        value: /data/output
+      # Everything below is optional — the platform runs with demo
+      # connectors and console/file notifications if left unset. Fill in
+      # only the ones you actually intend to use.
+      - key: RENTCAST_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_SENDER
+        sync: false
+      - key: SMTP_RECIPIENT
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: WEBHOOK_SIGNING_SECRET
+        sync: false
+
+# Not included: a Render Cron Job for recurring saved-search monitoring.
+# Render Cron Jobs run as a separate service and cannot mount the same Disk
+# as the web service above, so a cron job here could not see the same SQLite
+# database — see docs/45_Deployment_Guide.md "Background Jobs and Monitoring"
+# for why, and for what to use instead if unattended recurring monitoring is
+# required. Manually triggered monitoring runs (the dashboard's "Run Now")
+# work fully without any of this.
